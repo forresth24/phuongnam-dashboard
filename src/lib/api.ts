@@ -33,6 +33,7 @@ export async function fetchApi<T>(config: AppConfig, endpoint: string, options?:
 }
 
 export const API = {
+  getSettings: (config: AppConfig) => fetchApi<any>(config, '/api/settings'),
   getStats: (config: AppConfig) => fetchApi<any>(config, '/api/stats'),
   getRooms: (config: AppConfig) => fetchApi<any[]>(config, '/api/rooms'),
   getContracts: (config: AppConfig) => fetchApi<any[]>(config, '/api/contracts'),

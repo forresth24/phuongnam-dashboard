@@ -71,12 +71,16 @@ function RoomsTab({ config, refreshKey }: { config: AppConfig, refreshKey: numbe
             className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100"
           >
             <div className="flex justify-between items-start mb-4">
-              <h3 className="text-lg font-bold text-slate-900">{r.name}</h3>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">{r.name}</h3>
+                {r.type && <span className="text-xs font-medium text-slate-500 block mt-1">{r.type}</span>}
+              </div>
               <span className={`px-3 py-1 rounded-full text-xs font-medium ${r.status === 'available' ? 'bg-green-100 text-green-700' : 'bg-rose-100 text-rose-700'}`}>
                 {r.status === 'available' ? 'Trống' : 'Đang thuê'}
               </span>
             </div>
             <p className="text-slate-500 mb-4">{formatVND(r.price)} / tháng</p>
+            {r.note && <div className="text-xs text-slate-500 bg-slate-50 p-2 rounded">Ghi chú: {r.note}</div>}
           </motion.div>
         ))}
       </div>
@@ -117,7 +121,8 @@ function PaymentsTab({ config, refreshKey, onUpdate }: { config: AppConfig, refr
             <thead className="bg-slate-50 text-slate-500">
               <tr>
                 <th className="px-6 py-4 font-medium">Hợp đồng</th>
-                <th className="px-6 py-4 font-medium">Số tiền</th>
+                <th className="px-6 py-4 font-medium">Loại GD</th>
+                <th className="px-6 py-4 font-medium">Số tiền nộp</th>
                 <th className="px-6 py-4 font-medium focus:hidden">Ngày</th>
                 <th className="px-6 py-4 font-medium">Trạng thái</th>
                 <th className="px-6 py-4 font-medium">Thao tác</th>
@@ -127,8 +132,19 @@ function PaymentsTab({ config, refreshKey, onUpdate }: { config: AppConfig, refr
               {payments.map((p) => (
                 <tr key={p.id} className="hover:bg-slate-50/50 transition-colors">
                   <td className="px-6 py-4 font-medium text-slate-900">{p.contract_id}</td>
-                  <td className="px-6 py-4 font-bold text-indigo-600">{formatVND(p.amount)}</td>
-                  <td className="px-6 py-4 text-slate-500 min-w-[120px]">{p.date}</td>
+                  <td className="px-6 py-4 font-medium text-slate-700 min-w-[140px]">
+                    <span className="block">{p.payment_type || 'Tiền phòng'}</span>
+                    {String(p.is_partial).toUpperCase() === 'TRUE' && (
+                      <span className="inline-flex mt-1 px-2 py-0.5 rounded text-[10px] bg-red-100 text-red-700 font-bold border border-red-200">Trả thiếu</span>
+                    )}
+                  </td>
+                  <td className="px-6 py-4 min-w-[140px]">
+                    <div className="font-bold text-indigo-600">{formatVND(p.amount)}</div>
+                    {p.total_amount_calculated && (
+                      <div className="text-[11px] text-slate-400 mt-1">Định mức: {formatVND(p.total_amount_calculated)}</div>
+                    )}
+                  </td>
+                  <td className="px-6 py-4 text-slate-500 min-w-[100px]">{p.date}</td>
                   <td className="px-6 py-4 min-w-[160px]">
                     <span className={`inline-flex px-3 py-1 rounded-full text-xs font-medium ${
                       (!p.status || p.status === 'Hoàn thành') ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
