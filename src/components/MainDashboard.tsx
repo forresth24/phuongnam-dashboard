@@ -117,7 +117,7 @@ export function MainDashboard({ config, onLogout }: { config: AppConfig, onLogou
             transition={{ duration: 0.2 }}
           >
             {activeTab === 'overview' && <OverviewTab data={data} loading={loading} />}
-            {activeTab === 'rooms' && <RoomsTab config={config} data={data} loading={loading} role={role} onRefresh={forceRefresh} />}
+            {activeTab === 'rooms' && <RoomsTab config={config} data={data} loading={loading} role={role} onRefresh={forceRefresh} onNavigate={setActiveTab} />}
             {activeTab === 'contracts' && <ContractsTab config={config} data={data} loading={loading} role={role} onRefresh={forceRefresh} />}
             {activeTab === 'tenants' && <TenantsTab config={config} data={data} loading={loading} role={role} onRefresh={forceRefresh} />}
             {activeTab === 'payments' && <PaymentsTab config={config} data={data} loading={loading} role={role} onRefresh={forceRefresh} />}
