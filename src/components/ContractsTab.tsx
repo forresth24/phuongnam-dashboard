@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Pencil, Trash2, Archive, Loader2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, Archive, Loader2, FileDown } from 'lucide-react';
+import { API, downloadBase64Pdf } from '../lib/api';
 import type { AppConfig, DashboardData, UserRole } from '../lib/api';
-import { API } from '../lib/api';
 import { Badge } from './ui/Badge';
 import { Modal } from './ui/Modal';
 import { ConfirmDialog } from './ui/ConfirmDialog';
@@ -47,6 +47,7 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [archiveId, setArchiveId] = useState<string | null>(null);
   const [acting, setActing] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState<string | null>(null);
 
   if (loading) return <div className="flex h-64 items-center justify-center"><Loader2 className="animate-spin text-indigo-500" size={32} /></div>;
   if (!data) return null;
@@ -66,10 +67,10 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
   const openEdit = (c: any) => {
     setEditItem(c);
     setForm({
-      room_id: c.room_id || '', tenant: c.tenant || '', phone: c.phone || '', cccd: '',
-      people_count: c.people_count || 1, start_date: c.start_date || '', duration: 12,
+      room_id: String(c.room_id || ''), tenant: String(c.tenant || ''), phone: String(c.phone || ''), cccd: '',
+      people_count: c.people_count || 1, start_date: String(c.start_date || ''), duration: 12,
       rent: c.rent || 0, deposit: c.deposit || 0, start_electric: c.start_electric || 0,
-      discount: c.discount || 0, note: c.note || '',
+      discount: c.discount || 0, note: String(c.note || ''),
     });
     setErrors({});
     setSaveError('');
@@ -132,6 +133,17 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
     setActing(false);
   };
 
+  const handlePdf = async (contractId: string, type: 'contract' | 'payment') => {
+    setPdfLoading(`${type}_${contractId}`);
+    try {
+      const res = type === 'contract'
+        ? await API.getContractPdf(config, contractId)
+        : await API.getPaymentPdf(config, contractId);
+      downloadBase64Pdf(res.base64, res.filename);
+    } catch (e: any) { alert('Lỗi tạo PDF: ' + e.message); }
+    setPdfLoading(null);
+  };
+
   const F = (k: string, v: any) => {
     setForm({ ...form, [k]: v });
     if ((errors as any)[k]) setErrors({ ...errors, [k]: undefined });
@@ -174,6 +186,7 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
                 <th className="px-4 py-3 font-medium">Cọc</th>
                 <th className="px-4 py-3 font-medium">Trạng thái</th>
                 {isAdmin && <th className="px-4 py-3 font-medium">Thao tác</th>}
+                {!isAdmin && <th className="px-4 py-3 font-medium">Xuất PDF</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -187,15 +200,21 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
                   <td className="px-4 py-3 font-medium text-indigo-600">{formatVND(c.rent)}</td>
                   <td className="px-4 py-3">{formatVND(c.deposit || 0)}</td>
                   <td className="px-4 py-3"><Badge variant={c.status === 'active' ? 'success' : 'neutral'}>{c.status === 'active' ? 'Đang hoạt động' : 'Đã kết thúc'}</Badge></td>
-                  {isAdmin && (
                     <td className="px-4 py-3">
                       <div className="flex gap-1">
-                        <button onClick={() => openEdit(c)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-indigo-600"><Pencil size={14} /></button>
-                        {c.status === 'active' && <button onClick={() => setArchiveId(c.id)} title="Kết thúc & Archive" className="p-1.5 rounded-lg hover:bg-amber-50 text-slate-400 hover:text-amber-600"><Archive size={14} /></button>}
-                        <button onClick={() => setDeleteId(c.id)} className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600"><Trash2 size={14} /></button>
+                        <button onClick={() => handlePdf(c.id, 'contract')} disabled={pdfLoading === `contract_${c.id}`}
+                          title="Xuất PDF Hợp đồng" className="p-1.5 rounded-lg hover:bg-blue-50 text-slate-400 hover:text-blue-600 disabled:opacity-50">
+                          {pdfLoading === `contract_${c.id}` ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} />}
+                        </button>
+                        <button onClick={() => handlePdf(c.id, 'payment')} disabled={pdfLoading === `payment_${c.id}`}
+                          title="Xuất PDF Thông báo TT" className="p-1.5 rounded-lg hover:bg-emerald-50 text-slate-400 hover:text-emerald-600 disabled:opacity-50">
+                          {pdfLoading === `payment_${c.id}` ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} />}
+                        </button>
+                        {isAdmin && <button onClick={() => openEdit(c)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-indigo-600"><Pencil size={14} /></button>}
+                        {isAdmin && c.status === 'active' && <button onClick={() => setArchiveId(c.id)} title="Kết thúc & Archive" className="p-1.5 rounded-lg hover:bg-amber-50 text-slate-400 hover:text-amber-600"><Archive size={14} /></button>}
+                        {isAdmin && <button onClick={() => setDeleteId(c.id)} className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600"><Trash2 size={14} /></button>}
                       </div>
                     </td>
-                  )}
                 </motion.tr>
               ))}
               {contracts.length === 0 && <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-400">Không có hợp đồng nào</td></tr>}
@@ -262,18 +281,21 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
               <p className="text-[11px] text-slate-400 mt-0.5">{minMonths}–{maxMonths} tháng</p>
             </div>
           )}
-          {/* Rent */}
+          {/* Rent — auto from room */}
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Giá thuê/tháng</label>
-            <input type="number" value={form.rent} onChange={e => F('rent', Number(e.target.value))}
-              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
-            {form.rent > 0 && <p className="text-[11px] text-slate-400 mt-0.5">{formatVND(form.rent)}</p>}
+            <div className="w-full border border-slate-100 bg-slate-50 rounded-xl px-3 py-2 text-sm font-medium text-indigo-600">
+              {form.rent > 0 ? formatVND(form.rent) : '—'}
+            </div>
+            <p className="text-[11px] text-slate-400 mt-0.5">Tự động theo giá phòng</p>
           </div>
-          {/* Deposit */}
+          {/* Deposit — auto = 1 month rent */}
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Tiền cọc (= 1 tháng)</label>
-            <input type="number" value={form.deposit} onChange={e => F('deposit', Number(e.target.value))}
-              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
+            <label className="block text-xs font-medium text-slate-600 mb-1">Tiền cọc (1 tháng)</label>
+            <div className="w-full border border-slate-100 bg-slate-50 rounded-xl px-3 py-2 text-sm font-medium text-slate-700">
+              {form.deposit > 0 ? formatVND(form.deposit) : '—'}
+            </div>
+            <p className="text-[11px] text-slate-400 mt-0.5">= giá thuê</p>
           </div>
           {/* Electric */}
           <div>

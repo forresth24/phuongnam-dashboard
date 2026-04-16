@@ -97,4 +97,26 @@ export const API = {
   // Settings
   updateSettings: (config: AppConfig, data: Record<string, number | string>) =>
     fetchApi<any>(config, '/api/settings', { method: 'PUT', body: JSON.stringify(data) }),
+
+  // PDF generation
+  getContractPdf: (config: AppConfig, contractId: string) =>
+    fetchApi<{ base64: string; filename: string }>(config, `/api/pdf/contract/${contractId}`),
+  getPaymentPdf: (config: AppConfig, contractId: string) =>
+    fetchApi<{ base64: string; filename: string }>(config, `/api/pdf/payment/${contractId}`),
 };
+
+/** Download a base64 PDF as a file */
+export function downloadBase64Pdf(base64: string, filename: string) {
+  const byteChars = atob(base64);
+  const byteNumbers = new Array(byteChars.length);
+  for (let i = 0; i < byteChars.length; i++) {
+    byteNumbers[i] = byteChars.charCodeAt(i);
+  }
+  const blob = new Blob([new Uint8Array(byteNumbers)], { type: 'application/pdf' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
