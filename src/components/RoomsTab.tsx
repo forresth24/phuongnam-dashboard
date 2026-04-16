@@ -6,6 +6,8 @@ import { API } from '../lib/api';
 import { Badge } from './ui/Badge';
 import { Modal } from './ui/Modal';
 import { ConfirmDialog } from './ui/ConfirmDialog';
+import { DatePickerInput } from './ui/DatePickerInput';
+import { getReceivers, autoPaymentStatus, getContractMonthRange } from '../lib/settings-helpers';
 
 const formatVND = (amount: number) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
 const todayStr = () => {
@@ -22,9 +24,7 @@ function isPaymentInCurrentMonth(dateStr: string) {
   if (!dateStr) return false;
   const { month, year } = getCurrentMonthYear();
   const parts = String(dateStr).split('/');
-  if (parts.length === 3) {
-    return Number(parts[1]) === month && Number(parts[2]) === year;
-  }
+  if (parts.length === 3) return Number(parts[1]) === month && Number(parts[2]) === year;
   const d = new Date(dateStr);
   return d.getMonth() + 1 === month && d.getFullYear() === year;
 }
@@ -41,28 +41,11 @@ interface Props {
 const emptyRoom = { id: '', name: '', type: 'Phòng đơn', price: 0, note: '' };
 
 interface PayForm {
-  room_id: string;
-  contract_id: string;
-  payment_type: string;
-  amount: number;
-  date: string;
-  receiver: string;
-  method: string;
-  status: string;
-  note: string;
-  // auto-create contract fields
-  tenant: string;
-  phone: string;
-  cccd: string;
-  duration: number;
+  room_id: string; contract_id: string; payment_type: string; amount: number;
+  date: string; receiver: string; method: string; status: string; note: string;
+  tenant: string; phone: string; cccd: string; duration: number;
 }
-
-interface PayError {
-  amount?: string;
-  receiver?: string;
-  tenant?: string;
-  phone_cccd?: string;
-}
+interface PayError { amount?: string; receiver?: string; tenant?: string; phone?: string; cccd?: string; }
 
 export function RoomsTab({ config, data, loading, role, onRefresh, onNavigate }: Props) {
   const [modalOpen, setModalOpen] = useState(false);
@@ -71,7 +54,6 @@ export function RoomsTab({ config, data, loading, role, onRefresh, onNavigate }:
   const [saving, setSaving] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
-  // Detail panels
   const [detailRoom, setDetailRoom] = useState<string | null>(null);
   const [detailType, setDetailType] = useState<'contract' | 'tenants'>('contract');
   // Quick payment
@@ -80,12 +62,16 @@ export function RoomsTab({ config, data, loading, role, onRefresh, onNavigate }:
   const [payErrors, setPayErrors] = useState<PayError>({});
   const [paySaving, setPaySaving] = useState(false);
   const [paySaveError, setPaySaveError] = useState('');
+  const [partialConfirm, setPartialConfirm] = useState(false);
+  const [pendingSubmit, setPendingSubmit] = useState(false);
 
   if (loading) return <div className="flex h-64 items-center justify-center"><Loader2 className="animate-spin text-indigo-500" size={32} /></div>;
   if (!data) return null;
 
   const rooms = data.rooms;
   const isAdmin = role === 'admin';
+  const receivers = getReceivers(data.settings);
+  const { min: minMonths, max: maxMonths } = getContractMonthRange(data.settings);
 
   const getActiveContract = (roomId: string) =>
     data.contracts.find((c: any) => String(c.room_id).trim() === String(roomId).trim());
@@ -94,20 +80,16 @@ export function RoomsTab({ config, data, loading, role, onRefresh, onNavigate }:
     const activeContract = getActiveContract(room.id);
     const roomTenants = data.tenants.filter((t: any) => String(t.room_id).trim() === String(room.id).trim());
     const hasContract = !!activeContract;
-    let hasDeposit = false;
-    let hasPaidCurrentMonth = false;
+    let hasDeposit = false, hasPaidCurrentMonth = false;
     if (activeContract) {
-      const contractPayments = data.payments.filter((p: any) => String(p.contract_id).trim() === String(activeContract.id).trim());
-      hasDeposit = contractPayments.some((p: any) => String(p.payment_type || '').toLowerCase().includes('cọc'));
-      hasPaidCurrentMonth = contractPayments.some((p: any) =>
-        p.payment_type === 'Tiền phòng' && isPaymentInCurrentMonth(p.date)
-      );
+      const cp = data.payments.filter((p: any) => String(p.contract_id).trim() === String(activeContract.id).trim());
+      hasDeposit = cp.some((p: any) => String(p.payment_type || '').toLowerCase().includes('cọc'));
+      hasPaidCurrentMonth = cp.some((p: any) => p.payment_type === 'Tiền phòng' && isPaymentInCurrentMonth(p.date));
     }
-    const contractNote = activeContract?.note;
-    return { hasContract, hasDeposit, hasPaidCurrentMonth, memberCount: roomTenants.length, contractNote, activeContract, roomTenants };
+    return { hasContract, hasDeposit, hasPaidCurrentMonth, memberCount: roomTenants.length, contractNote: activeContract?.note };
   };
 
-  // ─── Room CRUD ───
+  // Room CRUD
   const openCreate = () => { setEditRoom(null); setForm(emptyRoom); setModalOpen(true); };
   const openEdit = (room: any) => {
     setEditRoom(room);
@@ -116,115 +98,103 @@ export function RoomsTab({ config, data, loading, role, onRefresh, onNavigate }:
   };
   const handleSave = async () => {
     setSaving(true);
-    try {
-      if (editRoom) { await API.updateRoom(config, editRoom.id, form); }
-      else { await API.createRoom(config, form); }
-      setModalOpen(false);
-      onRefresh();
-    } catch (e: any) { alert('Lỗi: ' + e.message); }
+    try { if (editRoom) await API.updateRoom(config, editRoom.id, form); else await API.createRoom(config, form); setModalOpen(false); onRefresh(); }
+    catch (e: any) { alert('Lỗi: ' + e.message); }
     setSaving(false);
   };
   const handleDelete = async () => {
-    if (!deleteId) return;
-    setDeleting(true);
+    if (!deleteId) return; setDeleting(true);
     try { await API.deleteRoom(config, deleteId); setDeleteId(null); onRefresh(); }
     catch (e: any) { alert('Lỗi: ' + e.message); }
     setDeleting(false);
   };
 
-  // ─── Quick Payment ───
+  // Quick Payment
   const openPayForRoom = (room: any) => {
     const contract = getActiveContract(room.id);
     const price = Number(room.price) || 0;
     setPayForm({
-      room_id: room.id,
-      contract_id: contract ? contract.id : '',
+      room_id: room.id, contract_id: contract ? contract.id : '',
       payment_type: room.status === 'available' ? 'Tiền cọc giữ phòng' : 'Tiền phòng',
-      amount: price,
-      date: todayStr(),
-      receiver: '',
-      method: 'Tiền mặt',
-      status: 'Chưa tới chủ nhà',
-      note: '',
-      tenant: contract ? contract.tenant : '',
-      phone: contract ? contract.phone : '',
-      cccd: '',
-      duration: 12,
+      amount: price, date: todayStr(), receiver: '', method: 'Tiền mặt',
+      status: 'Chưa tới chủ nhà', note: '',
+      tenant: contract ? contract.tenant : '', phone: contract ? contract.phone : '',
+      cccd: '', duration: 12,
     });
-    setPayErrors({});
-    setPaySaveError('');
-    setPayModalOpen(true);
+    setPayErrors({}); setPaySaveError(''); setPayModalOpen(true);
   };
 
   const needsNewContract = payForm ? !payForm.contract_id : false;
+  const getExpected = () => {
+    if (!payForm) return 0;
+    const room = rooms.find((r: any) => r.id === payForm.room_id);
+    return room ? Number(room.price) || 0 : 0;
+  };
+
+  const onReceiverChange = (receiver: string) => {
+    if (!payForm) return;
+    setPayForm({ ...payForm, receiver, status: autoPaymentStatus(receiver, data.settings) });
+    if (payErrors.receiver) setPayErrors({ ...payErrors, receiver: undefined });
+  };
 
   const validatePay = (): boolean => {
     if (!payForm) return false;
     const e: PayError = {};
     if (!payForm.amount || payForm.amount <= 0) e.amount = 'Vui lòng nhập số tiền';
-    if (!payForm.receiver.trim()) e.receiver = 'Vui lòng nhập tên người nhận';
+    if (!payForm.receiver.trim()) e.receiver = 'Vui lòng chọn người nhận';
     if (needsNewContract) {
       if (!payForm.tenant.trim()) e.tenant = 'Vui lòng nhập tên khách thuê';
-      if (!payForm.phone.trim() && !payForm.cccd.trim()) e.phone_cccd = 'Cần ít nhất SĐT hoặc CCCD';
+      if (!payForm.phone.trim() && !payForm.cccd.trim()) { e.phone = 'Cần ít nhất SĐT hoặc CCCD'; e.cccd = ' '; }
     }
     setPayErrors(e);
     return Object.keys(e).length === 0;
   };
 
-  const handlePay = async () => {
-    if (!payForm || !validatePay()) return;
-    setPaySaving(true);
-    setPaySaveError('');
+  const doPaySubmit = async () => {
+    if (!payForm) return;
+    setPaySaving(true); setPaySaveError('');
     try {
       let contractId = payForm.contract_id;
-      // Auto-create contract if room has none
-      if (!contractId) {
-        const contractResult = await API.createContract(config, {
-          room_id: payForm.room_id,
-          tenant: payForm.tenant,
-          phone: payForm.phone,
-          cccd: payForm.cccd,
-          duration: payForm.duration,
-        });
-        contractId = contractResult.id;
+      if (!contractId && needsNewContract) {
+        const res = await API.createContract(config, { room_id: payForm.room_id, tenant: payForm.tenant, phone: payForm.phone, cccd: payForm.cccd, duration: payForm.duration });
+        contractId = res.id;
       }
       if (!contractId) { setPaySaveError('Không tìm thấy hợp đồng'); setPaySaving(false); return; }
-
-      const room = rooms.find((r: any) => r.id === payForm.room_id);
-      const roomPrice = room ? Number(room.price) || 0 : 0;
-      const isPartial = payForm.payment_type === 'Tiền phòng' && payForm.amount < roomPrice;
-
+      const expected = getExpected();
+      const isPartial = payForm.payment_type === 'Tiền phòng' && payForm.amount < expected;
       await API.createPayment(config, {
-        contract_id: contractId,
-        payment_type: payForm.payment_type,
-        amount: payForm.amount,
-        date: payForm.date || todayStr(),
-        note: payForm.note,
-        receiver: payForm.receiver,
-        method: payForm.method,
-        status: payForm.status,
-        is_partial: isPartial,
-        total_amount_calculated: roomPrice,
+        contract_id: contractId, payment_type: payForm.payment_type, amount: payForm.amount,
+        date: payForm.date || todayStr(), note: payForm.note, receiver: payForm.receiver,
+        method: payForm.method, status: payForm.status, is_partial: isPartial, total_amount_calculated: expected,
       });
-      setPayModalOpen(false);
-      onRefresh();
+      setPayModalOpen(false); onRefresh();
     } catch (e: any) { setPaySaveError(e.message || 'Lỗi không xác định'); }
-    setPaySaving(false);
+    setPaySaving(false); setPendingSubmit(false);
   };
+
+  const handlePay = async () => {
+    if (!payForm || !validatePay()) return;
+    const expected = getExpected();
+    if ((payForm.payment_type === 'Tiền phòng' || payForm.payment_type.includes('cọc')) && payForm.amount < expected && expected > 0) {
+      setPartialConfirm(true); return;
+    }
+    await doPaySubmit();
+  };
+
+  const handlePartialConfirm = async () => { setPartialConfirm(false); setPendingSubmit(true); await doPaySubmit(); };
 
   const PF = (k: string, v: any) => {
     if (!payForm) return;
     setPayForm({ ...payForm, [k]: v });
-    const errKey = k === 'phone' || k === 'cccd' ? 'phone_cccd' : k;
-    if ((payErrors as any)[errKey]) setPayErrors({ ...payErrors, [errKey]: undefined });
+    if ((payErrors as any)[k]) setPayErrors({ ...payErrors, [k]: undefined });
+    if (k === 'phone' && payErrors.cccd) setPayErrors({ ...payErrors, phone: undefined, cccd: undefined });
+    if (k === 'cccd' && payErrors.phone) setPayErrors({ ...payErrors, phone: undefined, cccd: undefined });
   };
 
   const RequiredStar = () => <span className="text-rose-500 ml-0.5">*</span>;
-  const FieldErr = ({ msg }: { msg?: string }) => msg ? <p className="text-rose-500 text-[11px] mt-0.5">{msg}</p> : null;
+  const FieldErr = ({ msg }: { msg?: string }) => msg && msg.trim() ? <p className="text-rose-500 text-[11px] mt-0.5">{msg}</p> : null;
 
   const { month, year } = getCurrentMonthYear();
-
-  // Detail view data
   const detailContract = detailRoom ? getActiveContract(detailRoom) : null;
   const detailTenants = detailRoom ? data.tenants.filter((t: any) => String(t.room_id).trim() === String(detailRoom).trim()) : [];
   const detailRoomObj = detailRoom ? rooms.find((r: any) => r.id === detailRoom) : null;
@@ -245,12 +215,8 @@ export function RoomsTab({ config, data, loading, role, onRefresh, onNavigate }:
         {rooms.map((r: any, i: number) => {
           const badges = getRoomBadges(r);
           return (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}
-              key={r.id}
-              className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 hover:shadow-md transition-shadow"
-            >
-              {/* Header */}
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }} key={r.id}
+              className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 hover:shadow-md transition-shadow">
               <div className="flex justify-between items-start mb-3">
                 <div>
                   <h3 className="text-lg font-bold text-slate-900">{r.name}</h3>
@@ -260,8 +226,6 @@ export function RoomsTab({ config, data, loading, role, onRefresh, onNavigate }:
                   {r.status === 'available' ? 'Trống' : 'Đang thuê'}
                 </span>
               </div>
-
-              {/* Badges */}
               {r.status === 'occupied' && (
                 <div className="flex flex-wrap gap-1.5 mb-3">
                   <Badge variant={badges.hasContract ? 'success' : 'neutral'}>📋 {badges.hasContract ? 'Có HĐ' : 'Chưa có HĐ'}</Badge>
@@ -270,43 +234,28 @@ export function RoomsTab({ config, data, loading, role, onRefresh, onNavigate }:
                   <Badge variant="purple">👥 {badges.memberCount} người</Badge>
                 </div>
               )}
-
-              {/* Price */}
               <p className="text-slate-500 mb-3">{formatVND(r.price)} / tháng</p>
-
-              {/* Notes */}
               {r.note && <div className="text-xs text-slate-500 bg-slate-50 p-2 rounded-lg mb-2">📝 {r.note}</div>}
               {badges.contractNote && <div className="text-xs text-indigo-600 bg-indigo-50 p-2 rounded-lg mb-2">📝 HĐ: {badges.contractNote}</div>}
 
-              {/* Shortcuts + Actions */}
               <div className="flex items-center justify-between pt-2 border-t border-slate-50">
-                {/* Shortcuts */}
                 <div className="flex gap-1 flex-wrap">
-                  {/* Quick pay - always shown for admin */}
                   {isAdmin && (
-                    <button
-                      onClick={() => openPayForRoom(r)}
+                    <button onClick={() => openPayForRoom(r)}
                       className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 px-2 py-1.5 rounded-lg transition-colors"
-                      title={r.status === 'available' ? 'Thu cọc + Tạo HĐ' : 'Thu tiền'}
-                    >
+                      title={r.status === 'available' ? 'Thu cọc + Tạo HĐ' : 'Thu tiền'}>
                       <Banknote size={13} /> {r.status === 'available' ? 'Thu cọc' : 'Thu tiền'}
                     </button>
                   )}
                   {r.status === 'occupied' && badges.hasContract && (
                     <button onClick={() => { setDetailRoom(r.id); setDetailType('contract'); }}
-                      className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 px-2 py-1.5 rounded-lg transition-colors" title="Xem hợp đồng">
-                      <ScrollText size={13} /> HĐ
-                    </button>
+                      className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 px-2 py-1.5 rounded-lg transition-colors"><ScrollText size={13} /> HĐ</button>
                   )}
                   {r.status === 'occupied' && badges.memberCount > 0 && (
                     <button onClick={() => { setDetailRoom(r.id); setDetailType('tenants'); }}
-                      className="inline-flex items-center gap-1 text-xs text-purple-600 hover:text-purple-800 hover:bg-purple-50 px-2 py-1.5 rounded-lg transition-colors" title="Xem khách thuê">
-                      <Users size={13} /> {badges.memberCount} TV
-                    </button>
+                      className="inline-flex items-center gap-1 text-xs text-purple-600 hover:text-purple-800 hover:bg-purple-50 px-2 py-1.5 rounded-lg transition-colors"><Users size={13} /> {badges.memberCount} TV</button>
                   )}
                 </div>
-
-                {/* Admin actions */}
                 {isAdmin && (
                   <div className="flex gap-1">
                     <button onClick={() => openEdit(r)} className="p-2 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-indigo-600 transition-colors"><Pencil size={16} /></button>
@@ -320,74 +269,55 @@ export function RoomsTab({ config, data, loading, role, onRefresh, onNavigate }:
         {rooms.length === 0 && <div className="col-span-full text-center py-12 text-slate-400">Chưa có phòng nào</div>}
       </div>
 
-      {/* ─── Detail Modal: Contract or Tenants ─── */}
+      {/* Detail Modal */}
       <Modal open={!!detailRoom} onClose={() => setDetailRoom(null)}
         title={detailRoomObj ? `${detailRoomObj.name} — ${detailType === 'contract' ? 'Hợp đồng' : 'Khách thuê'}` : ''} maxWidth="max-w-lg">
         <div className="flex gap-2 mb-4 bg-slate-100 rounded-xl p-1">
           <button onClick={() => setDetailType('contract')} className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${detailType === 'contract' ? 'bg-white shadow text-indigo-700' : 'text-slate-500'}`}>📋 Hợp đồng</button>
           <button onClick={() => setDetailType('tenants')} className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${detailType === 'tenants' ? 'bg-white shadow text-purple-700' : 'text-slate-500'}`}>👥 Khách thuê ({detailTenants.length})</button>
         </div>
-        {detailType === 'contract' && (
-          detailContract ? (
-            <div className="space-y-3 text-sm">
-              <div className="grid grid-cols-2 gap-3">
-                <div><span className="text-slate-400 text-xs block">Mã HĐ</span><span className="font-mono text-xs">{detailContract.id}</span></div>
-                <div><span className="text-slate-400 text-xs block">Trạng thái</span><Badge variant={detailContract.status === 'active' ? 'success' : 'neutral'}>{detailContract.status === 'active' ? 'Đang hoạt động' : 'Đã kết thúc'}</Badge></div>
-                <div><span className="text-slate-400 text-xs block">Khách đại diện</span><span className="font-medium">{detailContract.tenant}</span></div>
-                <div><span className="text-slate-400 text-xs block">SĐT</span><span>{detailContract.phone || '—'}</span></div>
-                <div><span className="text-slate-400 text-xs block">Thời hạn</span><span>{detailContract.start_date} → {detailContract.end_date || '—'}</span></div>
-                <div><span className="text-slate-400 text-xs block">Số người</span><span>{detailContract.people_count || 1}</span></div>
-                <div><span className="text-slate-400 text-xs block">Giá thuê</span><span className="font-bold text-indigo-600">{formatVND(detailContract.rent)}</span></div>
-                <div><span className="text-slate-400 text-xs block">Tiền cọc</span><span>{formatVND(detailContract.deposit || 0)}</span></div>
-              </div>
-              {detailContract.note && <div className="text-xs text-slate-500 bg-slate-50 p-3 rounded-lg mt-2">📝 {detailContract.note}</div>}
-              {onNavigate && (
-                <button onClick={() => { setDetailRoom(null); onNavigate('contracts'); }} className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:underline mt-2">
-                  <ExternalLink size={12} /> Mở trang Hợp đồng
-                </button>
-              )}
+        {detailType === 'contract' && (detailContract ? (
+          <div className="space-y-3 text-sm">
+            <div className="grid grid-cols-2 gap-3">
+              <div><span className="text-slate-400 text-xs block">Mã HĐ</span><span className="font-mono text-xs">{detailContract.id}</span></div>
+              <div><span className="text-slate-400 text-xs block">Trạng thái</span><Badge variant={detailContract.status === 'active' ? 'success' : 'neutral'}>{detailContract.status === 'active' ? 'Đang hoạt động' : 'Đã kết thúc'}</Badge></div>
+              <div><span className="text-slate-400 text-xs block">Khách</span><span className="font-medium">{detailContract.tenant}</span></div>
+              <div><span className="text-slate-400 text-xs block">SĐT</span><span>{detailContract.phone || '—'}</span></div>
+              <div><span className="text-slate-400 text-xs block">Thời hạn</span><span>{detailContract.start_date} → {detailContract.end_date || '—'}</span></div>
+              <div><span className="text-slate-400 text-xs block">Số người</span><span>{detailContract.people_count || 1}</span></div>
+              <div><span className="text-slate-400 text-xs block">Giá thuê</span><span className="font-bold text-indigo-600">{formatVND(detailContract.rent)}</span></div>
+              <div><span className="text-slate-400 text-xs block">Tiền cọc</span><span>{formatVND(detailContract.deposit || 0)}</span></div>
             </div>
-          ) : <div className="text-center py-6 text-slate-400 text-sm">Chưa có hợp đồng cho phòng này</div>
-        )}
-        {detailType === 'tenants' && (
-          detailTenants.length > 0 ? (
-            <div className="space-y-3">
-              {detailTenants.map((t: any) => (
-                <div key={t.id} className="bg-slate-50 rounded-xl p-3 text-sm">
-                  <div className="font-medium text-slate-900 mb-1">{t.name}</div>
-                  <div className="grid grid-cols-2 gap-1 text-xs text-slate-500">
-                    <div>📞 {t.phone || '—'}</div>
-                    <div>🪪 {t.cccd || '—'}</div>
-                    <div>🎂 {t.dob || '—'}</div>
-                    <div>📍 {t.address || '—'}</div>
-                  </div>
+            {detailContract.note && <div className="text-xs text-slate-500 bg-slate-50 p-3 rounded-lg">📝 {detailContract.note}</div>}
+            {onNavigate && <button onClick={() => { setDetailRoom(null); onNavigate('contracts'); }} className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:underline mt-2"><ExternalLink size={12} /> Mở trang Hợp đồng</button>}
+          </div>
+        ) : <div className="text-center py-6 text-slate-400 text-sm">Chưa có hợp đồng</div>)}
+        {detailType === 'tenants' && (detailTenants.length > 0 ? (
+          <div className="space-y-3">
+            {detailTenants.map((t: any) => (
+              <div key={t.id} className="bg-slate-50 rounded-xl p-3 text-sm">
+                <div className="font-medium text-slate-900 mb-1">{t.name}</div>
+                <div className="grid grid-cols-2 gap-1 text-xs text-slate-500">
+                  <div>📞 {t.phone || '—'}</div><div>🪪 {t.cccd || '—'}</div>
+                  <div>🎂 {t.dob || '—'}</div><div>📍 {t.address || '—'}</div>
                 </div>
-              ))}
-              {onNavigate && (
-                <button onClick={() => { setDetailRoom(null); onNavigate('tenants'); }} className="inline-flex items-center gap-1 text-xs text-purple-600 hover:underline mt-2">
-                  <ExternalLink size={12} /> Mở trang Khách thuê
-                </button>
-              )}
-            </div>
-          ) : <div className="text-center py-6 text-slate-400 text-sm">Chưa có khách thuê nào trong phòng này</div>
-        )}
+              </div>
+            ))}
+            {onNavigate && <button onClick={() => { setDetailRoom(null); onNavigate('tenants'); }} className="inline-flex items-center gap-1 text-xs text-purple-600 hover:underline mt-2"><ExternalLink size={12} /> Mở trang Khách thuê</button>}
+          </div>
+        ) : <div className="text-center py-6 text-slate-400 text-sm">Chưa có khách thuê</div>)}
       </Modal>
 
-      {/* ─── Quick Payment Modal ─── */}
+      {/* Quick Payment Modal */}
       <Modal open={payModalOpen} onClose={() => setPayModalOpen(false)}
         title={payRoomObj ? `Thu tiền — ${payRoomObj.name}` : 'Thu tiền'} maxWidth="max-w-xl">
         {payForm && (
           <div className="space-y-4">
-            {/* Room info banner */}
             <div className="bg-slate-50 rounded-xl p-3 flex items-center justify-between">
-              <div>
-                <span className="font-bold text-slate-900">{payRoomObj?.name}</span>
-                <span className="text-xs text-slate-500 ml-2">{payRoomObj?.type}</span>
-              </div>
+              <div><span className="font-bold text-slate-900">{payRoomObj?.name}</span><span className="text-xs text-slate-500 ml-2">{payRoomObj?.type}</span></div>
               <span className="text-sm font-medium text-indigo-600">{formatVND(payRoomObj?.price || 0)}/tháng</span>
             </div>
 
-            {/* Auto-create contract if no active contract */}
             {needsNewContract && (
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm">
                 <p className="font-medium text-amber-800 mb-2">🆕 Phòng trống — sẽ tự động tạo hợp đồng mới</p>
@@ -399,35 +329,33 @@ export function RoomsTab({ config, data, loading, role, onRefresh, onNavigate }:
                     <FieldErr msg={payErrors.tenant} />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">SĐT<RequiredStar /></label>
-                    <input value={payForm.phone} onChange={e => PF('phone', e.target.value)} placeholder="0901..."
-                      className={`w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none ${payErrors.phone_cccd ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`} />
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Số điện thoại<RequiredStar /></label>
+                    <input value={payForm.phone} onChange={e => PF('phone', e.target.value)} placeholder="0901234567"
+                      className={`w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none ${payErrors.phone ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`} />
+                    <FieldErr msg={payErrors.phone} />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">CCCD <span className="text-slate-400 font-normal">(hoặc SĐT)</span></label>
-                    <input value={payForm.cccd} onChange={e => PF('cccd', e.target.value)} placeholder="079..."
-                      className={`w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none ${payErrors.phone_cccd ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`} />
-                    <FieldErr msg={payErrors.phone_cccd} />
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Số CCCD</label>
+                    <input value={payForm.cccd} onChange={e => PF('cccd', e.target.value)} placeholder="079123456789"
+                      className={`w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none ${payErrors.cccd ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`} />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Thời hạn HĐ</label>
-                    <select value={payForm.duration} onChange={e => PF('duration', Number(e.target.value))}
-                      className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none">
-                      {[3, 6, 9, 12].map(n => <option key={n} value={n}>{n} tháng</option>)}
-                    </select>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Thời hạn HĐ (tháng)</label>
+                    <input type="number" min={minMonths} max={maxMonths} value={payForm.duration}
+                      onChange={e => PF('duration', Math.max(minMonths, Math.min(maxMonths, Number(e.target.value) || minMonths)))}
+                      className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
+                    <p className="text-[11px] text-slate-400 mt-0.5">{minMonths}–{maxMonths} tháng</p>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Existing contract info */}
             {!needsNewContract && payForm.contract_id && (
               <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-sm text-green-800 flex items-center gap-2">
                 📋 HĐ: <span className="font-mono text-xs">{payForm.contract_id}</span> — {payForm.tenant}
               </div>
             )}
 
-            {/* Payment details */}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">Loại giao dịch</label>
@@ -449,13 +377,15 @@ export function RoomsTab({ config, data, loading, role, onRefresh, onNavigate }:
               </div>
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">Ngày thu</label>
-                <input value={payForm.date} onChange={e => PF('date', e.target.value)} placeholder="DD/MM/YYYY"
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
+                <DatePickerInput value={payForm.date} onChange={v => PF('date', v)} />
               </div>
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">Người nhận<RequiredStar /></label>
-                <input value={payForm.receiver} onChange={e => PF('receiver', e.target.value)} placeholder="Chủ nhà / Người uỷ quyền"
-                  className={`w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none ${payErrors.receiver ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`} />
+                <select value={payForm.receiver} onChange={e => onReceiverChange(e.target.value)}
+                  className={`w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none ${payErrors.receiver ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`}>
+                  <option value="">Chọn người nhận</option>
+                  {receivers.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
                 <FieldErr msg={payErrors.receiver} />
               </div>
               <div>
@@ -473,6 +403,7 @@ export function RoomsTab({ config, data, loading, role, onRefresh, onNavigate }:
                   <option value="Chưa tới chủ nhà">Chưa tới chủ nhà</option>
                   <option value="Hoàn thành">Hoàn thành (đã tới chủ nhà)</option>
                 </select>
+                <p className="text-[10px] text-slate-400 mt-0.5">Tự động theo người nhận</p>
               </div>
             </div>
 
@@ -482,30 +413,32 @@ export function RoomsTab({ config, data, loading, role, onRefresh, onNavigate }:
                 className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
             </div>
 
-            {paySaveError && (
-              <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-sm text-rose-700">⚠️ {paySaveError}</div>
-            )}
+            {paySaveError && <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-sm text-rose-700">⚠️ {paySaveError}</div>}
 
-            <button onClick={handlePay} disabled={paySaving}
+            <button onClick={handlePay} disabled={paySaving || pendingSubmit}
               className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-xl font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
-              {paySaving && <Loader2 size={16} className="animate-spin" />}
-              <Banknote size={18} />
-              {needsNewContract ? 'Tạo HĐ + Thu tiền' : 'Thu tiền'}
+              {(paySaving || pendingSubmit) && <Loader2 size={16} className="animate-spin" />}
+              <Banknote size={18} /> {needsNewContract ? 'Tạo HĐ + Thu tiền' : 'Thu tiền'}
             </button>
           </div>
         )}
       </Modal>
 
-      {/* ─── Room Create/Edit Modal ─── */}
+      {/* Partial Payment Confirmation */}
+      <ConfirmDialog open={partialConfirm} onClose={() => setPartialConfirm(false)} onConfirm={handlePartialConfirm}
+        loading={pendingSubmit} title="Xác nhận thanh toán thiếu" confirmLabel="Xác nhận ghi nhận"
+        message={`Số tiền ${formatVND(payForm?.amount || 0)} thấp hơn mức định mức ${formatVND(getExpected())}. Giao dịch sẽ được ghi nhận là "Trả thiếu". Bạn có chắc muốn tiếp tục?`} />
+
+      {/* Room CRUD Modal */}
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editRoom ? 'Sửa phòng' : 'Thêm phòng mới'}>
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Mã phòng (ID)<RequiredStar /></label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Mã phòng (ID)<span className="text-rose-500 ml-0.5">*</span></label>
             <input value={form.id} onChange={e => setForm({ ...form, id: e.target.value })} disabled={!!editRoom} placeholder="101"
               className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:bg-slate-50 disabled:text-slate-400" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Tên phòng<RequiredStar /></label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Tên phòng<span className="text-rose-500 ml-0.5">*</span></label>
             <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Phòng 101"
               className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
           </div>
@@ -513,8 +446,7 @@ export function RoomsTab({ config, data, loading, role, onRefresh, onNavigate }:
             <label className="block text-sm font-medium text-slate-700 mb-1">Loại phòng</label>
             <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}
               className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
-              <option value="Phòng đơn">Phòng đơn</option>
-              <option value="Phòng đôi">Phòng đôi</option>
+              <option value="Phòng đơn">Phòng đơn</option><option value="Phòng đôi">Phòng đôi</option>
             </select>
           </div>
           <div>
@@ -530,13 +462,11 @@ export function RoomsTab({ config, data, loading, role, onRefresh, onNavigate }:
           </div>
           <button onClick={handleSave} disabled={saving || !form.name}
             className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-xl font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
-            {saving && <Loader2 size={16} className="animate-spin" />}
-            {editRoom ? 'Cập nhật' : 'Tạo phòng'}
+            {saving && <Loader2 size={16} className="animate-spin" />} {editRoom ? 'Cập nhật' : 'Tạo phòng'}
           </button>
         </div>
       </Modal>
 
-      {/* Delete Confirm */}
       <ConfirmDialog open={!!deleteId} onClose={() => setDeleteId(null)} onConfirm={handleDelete} loading={deleting}
         message={`Bạn có chắc muốn xóa phòng "${deleteId}"? Dữ liệu sẽ được lưu vào history trước khi xóa.`} />
     </div>

@@ -6,6 +6,8 @@ import { API } from '../lib/api';
 import { Badge } from './ui/Badge';
 import { Modal } from './ui/Modal';
 import { ConfirmDialog } from './ui/ConfirmDialog';
+import { DatePickerInput } from './ui/DatePickerInput';
+import { getReceivers, autoPaymentStatus, getContractMonthRange } from '../lib/settings-helpers';
 
 const formatVND = (n: number) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(n);
 const todayStr = () => {
@@ -32,7 +34,6 @@ interface PaymentForm {
   status: string;
   is_partial: boolean;
   note: string;
-  // For auto-create contract
   tenant: string;
   phone: string;
   cccd: string;
@@ -51,7 +52,8 @@ interface FieldError {
   amount?: string;
   receiver?: string;
   tenant?: string;
-  phone_cccd?: string;
+  phone?: string;
+  cccd?: string;
 }
 
 export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
@@ -63,117 +65,122 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
   const [errors, setErrors] = useState<FieldError>({});
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
+  // Partial payment confirm
+  const [partialConfirm, setPartialConfirm] = useState(false);
+  const [pendingSubmit, setPendingSubmit] = useState(false);
 
   if (loading) return <div className="flex h-64 items-center justify-center"><Loader2 className="animate-spin text-indigo-500" size={32} /></div>;
   if (!data) return null;
 
   const isAdmin = role === 'admin';
-  const payments = [...data.payments].reverse(); // newest first
+  const payments = [...data.payments].reverse();
+  const receivers = getReceivers(data.settings);
+  const { min: minMonths, max: maxMonths } = getContractMonthRange(data.settings);
 
-  // Determine if room has active contract
-  const getActiveContract = (roomId: string) => {
-    return data.contracts.find((c: any) => String(c.room_id).trim() === String(roomId).trim());
-  };
+  const getActiveContract = (roomId: string) =>
+    data.contracts.find((c: any) => String(c.room_id).trim() === String(roomId).trim());
 
   const needsNewContract = form.room_id && !getActiveContract(form.room_id);
+
+  const getExpectedAmount = (): number => {
+    const room = data.rooms.find((r: any) => r.id === form.room_id);
+    return room ? Number(room.price) || 0 : 0;
+  };
 
   const onRoomChange = (roomId: string) => {
     const contract = getActiveContract(roomId);
     const room = data.rooms.find((r: any) => r.id === roomId);
     const price = room ? Number(room.price) || 0 : 0;
-
     setForm({
-      ...form,
-      room_id: roomId,
-      contract_id: contract ? contract.id : '',
-      amount: price,
-      tenant: contract ? contract.tenant : '',
-      phone: contract ? contract.phone : '',
+      ...form, room_id: roomId, contract_id: contract ? contract.id : '',
+      amount: price, tenant: contract ? contract.tenant : '',
+      phone: contract ? contract.phone : '', cccd: '',
     });
     if (errors.room_id) setErrors({ ...errors, room_id: undefined });
+  };
+
+  const onReceiverChange = (receiver: string) => {
+    const newStatus = autoPaymentStatus(receiver, data.settings);
+    setForm({ ...form, receiver, status: newStatus });
+    if (errors.receiver) setErrors({ ...errors, receiver: undefined });
   };
 
   const validate = (): boolean => {
     const e: FieldError = {};
     if (!form.room_id) e.room_id = 'Vui lòng chọn phòng';
     if (!form.amount || form.amount <= 0) e.amount = 'Vui lòng nhập số tiền';
-    if (!form.receiver.trim()) e.receiver = 'Vui lòng nhập tên người nhận';
+    if (!form.receiver.trim()) e.receiver = 'Vui lòng chọn người nhận';
     if (needsNewContract) {
       if (!form.tenant.trim()) e.tenant = 'Vui lòng nhập tên khách thuê';
-      if (!form.phone.trim() && !form.cccd.trim()) e.phone_cccd = 'Cần ít nhất SĐT hoặc CCCD';
+      if (!form.phone.trim() && !form.cccd.trim()) {
+        e.phone = 'Cần ít nhất SĐT hoặc CCCD';
+        e.cccd = ' ';
+      }
     }
     setErrors(e);
     return Object.keys(e).length === 0;
   };
 
-  const handleCreate = async () => {
-    if (!validate()) return;
+  const doSubmit = async () => {
     setSaving(true);
     setSaveError('');
     try {
       let contractId = form.contract_id;
-
-      // Auto-create contract if room is empty
       if (!contractId && needsNewContract) {
-        const contractResult = await API.createContract(config, {
-          room_id: form.room_id,
-          tenant: form.tenant,
-          phone: form.phone,
-          cccd: form.cccd,
-          duration: form.duration,
+        const res = await API.createContract(config, {
+          room_id: form.room_id, tenant: form.tenant,
+          phone: form.phone, cccd: form.cccd, duration: form.duration,
         });
-        contractId = contractResult.id;
+        contractId = res.id;
       }
+      if (!contractId) { setSaveError('Không tìm thấy hợp đồng'); setSaving(false); return; }
 
-      if (!contractId) {
-        setSaveError('Không tìm thấy hợp đồng cho phòng này');
-        setSaving(false);
-        return;
-      }
-
-      // Determine is_partial
-      const room = data.rooms.find((r: any) => r.id === form.room_id);
-      const roomPrice = room ? Number(room.price) || 0 : 0;
-      const isPartial = form.payment_type === 'Tiền phòng' && form.amount < roomPrice;
+      const expected = getExpectedAmount();
+      const isPartial = form.payment_type === 'Tiền phòng' && form.amount < expected;
 
       await API.createPayment(config, {
-        contract_id: contractId,
-        payment_type: form.payment_type,
-        amount: form.amount,
-        date: form.date || todayStr(),
-        note: form.note,
-        receiver: form.receiver,
-        method: form.method,
-        status: form.status,
-        is_partial: isPartial,
-        total_amount_calculated: roomPrice,
+        contract_id: contractId, payment_type: form.payment_type,
+        amount: form.amount, date: form.date || todayStr(),
+        note: form.note, receiver: form.receiver, method: form.method,
+        status: form.status, is_partial: isPartial,
+        total_amount_calculated: expected,
       });
-
       setModalOpen(false);
       onRefresh();
-    } catch (e: any) {
-      setSaveError(e.message || 'Lỗi không xác định');
-    }
+    } catch (e: any) { setSaveError(e.message || 'Lỗi không xác định'); }
     setSaving(false);
+    setPendingSubmit(false);
+  };
+
+  const handleCreate = async () => {
+    if (!validate()) return;
+    // Check partial payment
+    const expected = getExpectedAmount();
+    if ((form.payment_type === 'Tiền phòng' || form.payment_type.includes('cọc')) && form.amount < expected && expected > 0) {
+      setPartialConfirm(true);
+      return;
+    }
+    await doSubmit();
+  };
+
+  const handlePartialConfirm = async () => {
+    setPartialConfirm(false);
+    setPendingSubmit(true);
+    await doSubmit();
   };
 
   const handleComplete = async (id: string) => {
     setActing(id);
-    try {
-      await API.completePayment(config, id);
-      onRefresh();
-    } catch (e: any) { alert('Lỗi: ' + e.message); }
+    try { await API.completePayment(config, id); onRefresh(); }
+    catch (e: any) { alert('Lỗi: ' + e.message); }
     setActing(null);
   };
 
   const handleDelete = async () => {
     if (!deleteId) return;
     setDeleting(true);
-    try {
-      await API.deletePayment(config, deleteId);
-      setDeleteId(null);
-      onRefresh();
-    } catch (e: any) { alert('Lỗi: ' + e.message); }
+    try { await API.deletePayment(config, deleteId); setDeleteId(null); onRefresh(); }
+    catch (e: any) { alert('Lỗi: ' + e.message); }
     setDeleting(false);
   };
 
@@ -184,7 +191,6 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
     setModalOpen(true);
   };
 
-  // Find room name for a contract
   const getRoom = (contractId: string) => {
     const c = data.contracts_all.find((c: any) => c.id === contractId);
     if (!c) return contractId;
@@ -194,12 +200,13 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
 
   const F = (k: string, v: any) => {
     setForm({ ...form, [k]: v });
-    const errKey = k === 'phone' || k === 'cccd' ? 'phone_cccd' : k;
-    if ((errors as any)[errKey]) setErrors({ ...errors, [errKey]: undefined });
+    if ((errors as any)[k]) setErrors({ ...errors, [k]: undefined });
+    if (k === 'phone' && errors.cccd) setErrors({ ...errors, phone: undefined, cccd: undefined });
+    if (k === 'cccd' && errors.phone) setErrors({ ...errors, phone: undefined, cccd: undefined });
   };
 
   const RequiredStar = () => <span className="text-rose-500 ml-0.5">*</span>;
-  const FieldErr = ({ msg }: { msg?: string }) => msg ? <p className="text-rose-500 text-[11px] mt-0.5">{msg}</p> : null;
+  const FieldErr = ({ msg }: { msg?: string }) => msg && msg.trim() ? <p className="text-rose-500 text-[11px] mt-0.5">{msg}</p> : null;
 
   return (
     <div className="space-y-6">
@@ -212,6 +219,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
         )}
       </div>
 
+      {/* Table */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
@@ -237,9 +245,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
                   </td>
                   <td className="px-4 py-3 min-w-[130px]">
                     <span className="block text-sm">{p.payment_type || 'Tiền phòng'}</span>
-                    {String(p.is_partial).toUpperCase() === 'TRUE' && (
-                      <Badge variant="danger" className="mt-1">Trả thiếu</Badge>
-                    )}
+                    {String(p.is_partial).toUpperCase() === 'TRUE' && <Badge variant="danger" className="mt-1">Trả thiếu</Badge>}
                   </td>
                   <td className="px-4 py-3 min-w-[130px]">
                     <div className="font-bold text-indigo-600">{formatVND(p.amount)}</div>
@@ -250,25 +256,18 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
                   <td className="px-4 py-3 text-slate-500 text-xs whitespace-nowrap">{p.date}</td>
                   <td className="px-4 py-3 text-slate-600 text-xs">{p.receiver || '—'}</td>
                   <td className="px-4 py-3 text-xs">
-                    {p.method ? (
-                      <Badge variant={p.method === 'Chuyển khoản' ? 'info' : 'neutral'}>{p.method}</Badge>
-                    ) : '—'}
+                    {p.method ? <Badge variant={p.method === 'Chuyển khoản' ? 'info' : 'neutral'}>{p.method}</Badge> : '—'}
                   </td>
                   <td className="px-4 py-3">
-                    <Badge variant={(!p.status || p.status === 'Hoàn thành') ? 'success' : 'warning'}>
-                      {p.status || 'Hoàn thành'}
-                    </Badge>
+                    <Badge variant={(!p.status || p.status === 'Hoàn thành') ? 'success' : 'warning'}>{p.status || 'Hoàn thành'}</Badge>
                   </td>
                   <td className="px-4 py-3 text-xs text-slate-500 max-w-[150px] truncate">{p.note || '—'}</td>
                   {isAdmin && (
                     <td className="px-4 py-3">
                       <div className="flex gap-1">
                         {p.status === 'Chưa tới chủ nhà' && (
-                          <button
-                            onClick={() => handleComplete(p.id)}
-                            disabled={acting === p.id}
-                            className="inline-flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-50"
-                          >
+                          <button onClick={() => handleComplete(p.id)} disabled={acting === p.id}
+                            className="inline-flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-50">
                             {acting === p.id ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />} Đã nhận
                           </button>
                         )}
@@ -278,9 +277,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
                   )}
                 </motion.tr>
               ))}
-              {payments.length === 0 && (
-                <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-400">Chưa có giao dịch nào</td></tr>
-              )}
+              {payments.length === 0 && <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-400">Chưa có giao dịch nào</td></tr>}
             </tbody>
           </table>
         </div>
@@ -289,7 +286,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
       {/* Quick Payment Modal */}
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Thu tiền nhanh" maxWidth="max-w-xl">
         <div className="space-y-4">
-          {/* Room selection */}
+          {/* Room */}
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Chọn phòng<RequiredStar /></label>
             <select value={form.room_id} onChange={e => onRoomChange(e.target.value)}
@@ -303,7 +300,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
             <FieldErr msg={errors.room_id} />
           </div>
 
-          {/* Auto-create contract banner */}
+          {/* Auto-create contract */}
           {needsNewContract && (
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm">
               <p className="font-medium text-amber-800 mb-2">🆕 Phòng trống — sẽ tự động tạo hợp đồng mới</p>
@@ -315,24 +312,31 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
                   <FieldErr msg={errors.tenant} />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">SĐT<RequiredStar /></label>
-                  <input value={form.phone} onChange={e => F('phone', e.target.value)} placeholder="0901..."
-                    className={`w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none ${errors.phone_cccd ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`} />
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Số điện thoại<RequiredStar /></label>
+                  <input value={form.phone} onChange={e => F('phone', e.target.value)} placeholder="0901234567"
+                    className={`w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none ${errors.phone ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`} />
+                  <FieldErr msg={errors.phone} />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">CCCD <span className="text-slate-400 font-normal">(hoặc SĐT)</span></label>
-                  <input value={form.cccd} onChange={e => F('cccd', e.target.value)} placeholder="079..."
-                    className={`w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none ${errors.phone_cccd ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`} />
-                  <FieldErr msg={errors.phone_cccd} />
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Số CCCD</label>
+                  <input value={form.cccd} onChange={e => F('cccd', e.target.value)} placeholder="079123456789"
+                    className={`w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none ${errors.cccd ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`} />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">Thời hạn HĐ</label>
-                  <select value={form.duration} onChange={e => F('duration', Number(e.target.value))}
-                    className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none">
-                    {[3, 6, 9, 12].map(n => <option key={n} value={n}>{n} tháng</option>)}
-                  </select>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Thời hạn HĐ (tháng)</label>
+                  <input type="number" min={minMonths} max={maxMonths} value={form.duration}
+                    onChange={e => F('duration', Math.max(minMonths, Math.min(maxMonths, Number(e.target.value) || minMonths)))}
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
+                  <p className="text-[11px] text-slate-400 mt-0.5">{minMonths}–{maxMonths} tháng</p>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* Existing contract info */}
+          {!needsNewContract && form.contract_id && (
+            <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-sm text-green-800 flex items-center gap-2">
+              📋 HĐ: <span className="font-mono text-xs">{form.contract_id}</span> — {form.tenant}
             </div>
           )}
 
@@ -358,13 +362,15 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
             </div>
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Ngày thu</label>
-              <input value={form.date} onChange={e => F('date', e.target.value)} placeholder="DD/MM/YYYY"
-                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
+              <DatePickerInput value={form.date} onChange={v => F('date', v)} />
             </div>
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Người nhận<RequiredStar /></label>
-              <input value={form.receiver} onChange={e => F('receiver', e.target.value)} placeholder="Chủ nhà / Người uỷ quyền"
-                className={`w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none ${errors.receiver ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`} />
+              <select value={form.receiver} onChange={e => onReceiverChange(e.target.value)}
+                className={`w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none ${errors.receiver ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`}>
+                <option value="">Chọn người nhận</option>
+                {receivers.map(r => <option key={r} value={r}>{r}</option>)}
+              </select>
               <FieldErr msg={errors.receiver} />
             </div>
             <div>
@@ -382,6 +388,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
                 <option value="Chưa tới chủ nhà">Chưa tới chủ nhà</option>
                 <option value="Hoàn thành">Hoàn thành (đã tới chủ nhà)</option>
               </select>
+              <p className="text-[10px] text-slate-400 mt-0.5">Tự động theo người nhận</p>
             </div>
           </div>
 
@@ -391,19 +398,26 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
               className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
           </div>
 
-          {saveError && (
-            <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-sm text-rose-700">
-              ⚠️ {saveError}
-            </div>
-          )}
+          {saveError && <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-sm text-rose-700">⚠️ {saveError}</div>}
 
-          <button onClick={handleCreate} disabled={saving}
+          <button onClick={handleCreate} disabled={saving || pendingSubmit}
             className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-xl font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
-            {saving && <Loader2 size={16} className="animate-spin" />}
+            {(saving || pendingSubmit) && <Loader2 size={16} className="animate-spin" />}
             {needsNewContract ? 'Tạo HĐ + Thu tiền' : 'Thu tiền'}
           </button>
         </div>
       </Modal>
+
+      {/* Partial Payment Confirmation */}
+      <ConfirmDialog
+        open={partialConfirm}
+        onClose={() => setPartialConfirm(false)}
+        onConfirm={handlePartialConfirm}
+        loading={pendingSubmit}
+        title="Xác nhận thanh toán thiếu"
+        confirmLabel="Xác nhận ghi nhận"
+        message={`Số tiền ${formatVND(form.amount)} thấp hơn mức định mức ${formatVND(getExpectedAmount())}. Giao dịch sẽ được ghi nhận là "Trả thiếu". Bạn có chắc muốn tiếp tục?`}
+      />
 
       <ConfirmDialog open={!!deleteId} onClose={() => setDeleteId(null)} onConfirm={handleDelete} loading={deleting} message="Xóa giao dịch thanh toán này? Dữ liệu sẽ được lưu vào history." />
     </div>

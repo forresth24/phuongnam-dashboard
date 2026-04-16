@@ -17,6 +17,9 @@ const SETTING_LABELS: Record<string, string> = {
   SURCHARGE_PER_PERSON: 'Phụ phí Internet/Rác (VNĐ/người)',
   EXTRA_FEE_SINGLE: 'Phụ thu quá người - Phòng đơn (VNĐ)',
   EXTRA_FEE_DOUBLE: 'Phụ thu quá người - Phòng đôi (VNĐ)',
+  MIN_CONTRACT_MONTHS: 'Thời hạn HĐ tối thiểu (tháng)',
+  MAX_CONTRACT_MONTHS: 'Thời hạn HĐ tối đa (tháng)',
+  RECEIVERS: 'Danh sách người nhận tiền (phân cách bằng dấu phẩy)',
 };
 
 export function SettingsTab({ config, data, loading, role, onRefresh }: Props) {

@@ -6,6 +6,8 @@ import { API } from '../lib/api';
 import { Badge } from './ui/Badge';
 import { Modal } from './ui/Modal';
 import { ConfirmDialog } from './ui/ConfirmDialog';
+import { DatePickerInput } from './ui/DatePickerInput';
+import { getContractMonthRange } from '../lib/settings-helpers';
 
 const formatVND = (n: number) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(n);
 const todayStr = () => {
@@ -30,7 +32,8 @@ const makeEmptyForm = () => ({
 interface FieldError {
   room_id?: string;
   tenant?: string;
-  phone_cccd?: string;
+  phone?: string;
+  cccd?: string;
 }
 
 export function ContractsTab({ config, data, loading, role, onRefresh }: Props) {
@@ -50,6 +53,7 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
 
   const isAdmin = role === 'admin';
   const contracts = filter === 'active' ? data.contracts : data.contracts_all;
+  const { min: minMonths, max: maxMonths } = getContractMonthRange(data.settings);
 
   const openCreate = () => {
     setEditItem(null);
@@ -61,7 +65,6 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
 
   const openEdit = (c: any) => {
     setEditItem(c);
-    // Compute duration from dates for display
     setForm({
       room_id: c.room_id || '', tenant: c.tenant || '', phone: c.phone || '', cccd: '',
       people_count: c.people_count || 1, start_date: c.start_date || '', duration: 12,
@@ -77,21 +80,18 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
     const e: FieldError = {};
     if (!form.room_id) e.room_id = 'Vui lòng chọn phòng';
     if (!form.tenant.trim()) e.tenant = 'Vui lòng nhập tên khách thuê';
-    if (!form.phone.trim() && !form.cccd.trim()) e.phone_cccd = 'Cần ít nhất SĐT hoặc CCCD';
+    if (!form.phone.trim() && !form.cccd.trim()) {
+      e.phone = 'Cần ít nhất SĐT hoặc CCCD';
+      e.cccd = ' ';
+    }
     setErrors(e);
     return Object.keys(e).length === 0;
   };
 
-  // Auto-fill rent/deposit when room changes
   const onRoomChange = (roomId: string) => {
     const room = data.rooms.find((r: any) => r.id === roomId);
     const price = room ? Number(room.price) || 0 : 0;
-    setForm({
-      ...form,
-      room_id: roomId,
-      rent: price,
-      deposit: price,
-    });
+    setForm({ ...form, room_id: roomId, rent: price, deposit: price });
     if (errors.room_id) setErrors({ ...errors, room_id: undefined });
   };
 
@@ -101,7 +101,6 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
     setSaveError('');
     try {
       if (editItem) {
-        // For edit, send end_date from duration
         const payload: any = { ...form };
         delete payload.duration;
         delete payload.cccd;
@@ -120,34 +119,28 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
   const handleDelete = async () => {
     if (!deleteId) return;
     setActing(true);
-    try {
-      await API.deleteContract(config, deleteId);
-      setDeleteId(null);
-      onRefresh();
-    } catch (e: any) { alert('Lỗi: ' + e.message); }
+    try { await API.deleteContract(config, deleteId); setDeleteId(null); onRefresh(); }
+    catch (e: any) { alert('Lỗi: ' + e.message); }
     setActing(false);
   };
 
   const handleArchive = async () => {
     if (!archiveId) return;
     setActing(true);
-    try {
-      await API.endContract(config, archiveId);
-      setArchiveId(null);
-      onRefresh();
-    } catch (e: any) { alert('Lỗi: ' + e.message); }
+    try { await API.endContract(config, archiveId); setArchiveId(null); onRefresh(); }
+    catch (e: any) { alert('Lỗi: ' + e.message); }
     setActing(false);
   };
 
   const F = (k: string, v: any) => {
     setForm({ ...form, [k]: v });
-    // Clear field-level error on change
-    if (k === 'tenant' && errors.tenant) setErrors({ ...errors, tenant: undefined });
-    if ((k === 'phone' || k === 'cccd') && errors.phone_cccd) setErrors({ ...errors, phone_cccd: undefined });
+    if ((errors as any)[k]) setErrors({ ...errors, [k]: undefined });
+    if (k === 'phone' && errors.cccd) setErrors({ ...errors, phone: undefined, cccd: undefined });
+    if (k === 'cccd' && errors.phone) setErrors({ ...errors, phone: undefined, cccd: undefined });
   };
 
   const RequiredStar = () => <span className="text-rose-500 ml-0.5">*</span>;
-  const FieldErr = ({ msg }: { msg?: string }) => msg ? <p className="text-rose-500 text-[11px] mt-0.5">{msg}</p> : null;
+  const FieldErr = ({ msg }: { msg?: string }) => msg && msg.trim() ? <p className="text-rose-500 text-[11px] mt-0.5">{msg}</p> : null;
 
   return (
     <div className="space-y-6">
@@ -166,6 +159,7 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
         </div>
       </div>
 
+      {/* Table */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
@@ -192,27 +186,19 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
                   <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{c.start_date} → {c.end_date || '—'}</td>
                   <td className="px-4 py-3 font-medium text-indigo-600">{formatVND(c.rent)}</td>
                   <td className="px-4 py-3">{formatVND(c.deposit || 0)}</td>
-                  <td className="px-4 py-3">
-                    <Badge variant={c.status === 'active' ? 'success' : 'neutral'}>
-                      {c.status === 'active' ? 'Đang hoạt động' : 'Đã kết thúc'}
-                    </Badge>
-                  </td>
+                  <td className="px-4 py-3"><Badge variant={c.status === 'active' ? 'success' : 'neutral'}>{c.status === 'active' ? 'Đang hoạt động' : 'Đã kết thúc'}</Badge></td>
                   {isAdmin && (
                     <td className="px-4 py-3">
                       <div className="flex gap-1">
                         <button onClick={() => openEdit(c)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-indigo-600"><Pencil size={14} /></button>
-                        {c.status === 'active' && (
-                          <button onClick={() => setArchiveId(c.id)} title="Kết thúc & Archive" className="p-1.5 rounded-lg hover:bg-amber-50 text-slate-400 hover:text-amber-600"><Archive size={14} /></button>
-                        )}
+                        {c.status === 'active' && <button onClick={() => setArchiveId(c.id)} title="Kết thúc & Archive" className="p-1.5 rounded-lg hover:bg-amber-50 text-slate-400 hover:text-amber-600"><Archive size={14} /></button>}
                         <button onClick={() => setDeleteId(c.id)} className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600"><Trash2 size={14} /></button>
                       </div>
                     </td>
                   )}
                 </motion.tr>
               ))}
-              {contracts.length === 0 && (
-                <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-400">Không có hợp đồng nào</td></tr>
-              )}
+              {contracts.length === 0 && <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-400">Không có hợp đồng nào</td></tr>}
             </tbody>
           </table>
         </div>
@@ -240,16 +226,16 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
           </div>
           {/* Phone */}
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">SĐT<RequiredStar /></label>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Số điện thoại<RequiredStar /></label>
             <input value={form.phone} onChange={e => F('phone', e.target.value)} placeholder="0901234567"
-              className={`w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none ${errors.phone_cccd ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`} />
+              className={`w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none ${errors.phone ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`} />
+            <FieldErr msg={errors.phone} />
           </div>
           {/* CCCD */}
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">CCCD <span className="text-slate-400 font-normal">(hoặc SĐT)</span></label>
-            <input value={form.cccd} onChange={e => F('cccd', e.target.value)} placeholder="079..."
-              className={`w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none ${errors.phone_cccd ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`} />
-            <FieldErr msg={errors.phone_cccd} />
+            <label className="block text-xs font-medium text-slate-600 mb-1">Số CCCD<RequiredStar /></label>
+            <input value={form.cccd} onChange={e => F('cccd', e.target.value)} placeholder="079123456789"
+              className={`w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none ${errors.cccd ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`} />
           </div>
           {/* People count */}
           <div>
@@ -260,22 +246,20 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
           {/* Start date */}
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Ngày bắt đầu</label>
-            <input value={form.start_date} onChange={e => F('start_date', e.target.value)} placeholder="DD/MM/YYYY"
-              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
+            <DatePickerInput value={form.start_date} onChange={v => F('start_date', v)} />
           </div>
           {/* Duration */}
           {!editItem && (
             <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Thời hạn hợp đồng (tháng)</label>
-              <div className="flex gap-2">
-                <select value={form.duration} onChange={e => F('duration', Number(e.target.value))}
-                  className="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none">
-                  {[3, 6, 9, 12].map(n => <option key={n} value={n}>{n} tháng</option>)}
-                </select>
-                <input type="number" min={3} max={24} value={form.duration}
-                  onChange={e => F('duration', Math.max(3, Math.min(24, Number(e.target.value))))}
-                  className="w-20 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
-              </div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Thời hạn HĐ (tháng)</label>
+              <input
+                type="number"
+                min={minMonths} max={maxMonths}
+                value={form.duration}
+                onChange={e => F('duration', Math.max(minMonths, Math.min(maxMonths, Number(e.target.value) || minMonths)))}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none"
+              />
+              <p className="text-[11px] text-slate-400 mt-0.5">{minMonths}–{maxMonths} tháng</p>
             </div>
           )}
           {/* Rent */}
@@ -309,14 +293,9 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
             <textarea value={form.note} onChange={e => F('note', e.target.value)} rows={2}
               className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
           </div>
-
-          {/* Backend error */}
           {saveError && (
-            <div className="col-span-2 bg-rose-50 border border-rose-200 rounded-xl p-3 text-sm text-rose-700">
-              ⚠️ {saveError}
-            </div>
+            <div className="col-span-2 bg-rose-50 border border-rose-200 rounded-xl p-3 text-sm text-rose-700">⚠️ {saveError}</div>
           )}
-
           <div className="col-span-2">
             <button onClick={handleSave} disabled={saving}
               className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-xl font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
