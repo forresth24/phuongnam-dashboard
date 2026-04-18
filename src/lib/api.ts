@@ -103,6 +103,8 @@ export const API = {
     fetchApi<{ base64: string; filename: string }>(config, `/api/pdf/contract/${contractId}`),
   getPaymentPdf: (config: AppConfig, contractId: string) =>
     fetchApi<{ base64: string; filename: string }>(config, `/api/pdf/payment/${contractId}`),
+  getReceiptPdf: (config: AppConfig, paymentId: string) =>
+    fetchApi<{ base64: string; filename: string }>(config, `/api/pdf/receipt/${paymentId}`),
 };
 
 /** Download a base64 PDF as a file */

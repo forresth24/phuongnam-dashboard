@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Trash2, CheckCircle2, Loader2 } from 'lucide-react';
+import { Plus, Trash2, CheckCircle2, Loader2, FileText } from 'lucide-react';
 import type { AppConfig, DashboardData, UserRole } from '../lib/api';
-import { API } from '../lib/api';
+import { API, downloadBase64Pdf } from '../lib/api';
 import { Badge } from './ui/Badge';
 import { Modal } from './ui/Modal';
 import { ConfirmDialog } from './ui/ConfirmDialog';
@@ -68,6 +68,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
   // Partial payment confirm
   const [partialConfirm, setPartialConfirm] = useState(false);
   const [pendingSubmit, setPendingSubmit] = useState(false);
+  const [exportingId, setExportingId] = useState<string | null>(null);
 
   if (loading) return <div className="flex h-64 items-center justify-center"><Loader2 className="animate-spin text-indigo-500" size={32} /></div>;
   if (!data) return null;
@@ -184,6 +185,17 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
     setDeleting(false);
   };
 
+  const handleExportPdf = async (id: string) => {
+    setExportingId(id);
+    try {
+      const res = await API.getReceiptPdf(config, id);
+      downloadBase64Pdf(res.base64, res.filename);
+    } catch (e: any) {
+      alert('Lỗi xuất PDF: ' + e.message);
+    }
+    setExportingId(null);
+  };
+
   const openCreate = () => {
     setForm(makeEmptyForm());
     setErrors({});
@@ -266,12 +278,16 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
                     <td className="px-4 py-3">
                       <div className="flex gap-1">
                         {p.status === 'Chưa tới chủ nhà' && (
-                          <button onClick={() => handleComplete(p.id)} disabled={acting === p.id}
+                          <button onClick={() => handleComplete(p.id)} disabled={acting === p.id} title="Xác nhận đã nhận"
                             className="inline-flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-50">
                             {acting === p.id ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />} Đã nhận
                           </button>
                         )}
-                        <button onClick={() => setDeleteId(p.id)} className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600"><Trash2 size={14} /></button>
+                        <button onClick={() => handleExportPdf(p.id)} disabled={exportingId === p.id} title="Xuất PDF Biên Lai"
+                          className="p-1.5 rounded-lg hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 disabled:opacity-50">
+                          {exportingId === p.id ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
+                        </button>
+                        <button onClick={() => setDeleteId(p.id)} title="Xóa thanh toán" className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600"><Trash2 size={14} /></button>
                       </div>
                     </td>
                   )}
