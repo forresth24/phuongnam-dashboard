@@ -73,6 +73,9 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
   const [partialConfirm, setPartialConfirm] = useState(false);
   const [pendingSubmit, setPendingSubmit] = useState(false);
   const [exportingId, setExportingId] = useState<string | null>(null);
+  const [completeItem, setCompleteItem] = useState<any>(null);
+  const [completeReceiver, setCompleteReceiver] = useState('');
+  const [completeMethod, setCompleteMethod] = useState('Tiền mặt');
 
   if (loading) return <div className="flex h-64 items-center justify-center"><Loader2 className="animate-spin text-indigo-500" size={32} /></div>;
   if (!data) return null;
@@ -237,10 +240,27 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
     await doSubmit();
   };
 
-  const handleComplete = async (id: string) => {
-    setActing(id);
-    try { await API.completePayment(config, id); onRefresh(); }
-    catch (e: any) { alert('Lỗi: ' + e.message); }
+  const handleComplete = (p: any) => {
+    setCompleteItem(p);
+    setCompleteReceiver(receivers[0] || '');
+    setCompleteMethod(p.method || 'Tiền mặt');
+  };
+
+  const handleDoComplete = async () => {
+    if (!completeItem) return;
+    setActing(completeItem.id);
+    try {
+      await API.updatePayment(config, completeItem.id, {
+        ...completeItem,
+        receiver: completeReceiver,
+        method: completeMethod,
+        status: autoPaymentStatus(completeReceiver, data.settings),
+      });
+      setCompleteItem(null);
+      onRefresh();
+    } catch (e: any) {
+      alert('Lỗi: ' + e.message);
+    }
     setActing(null);
   };
 
@@ -383,7 +403,9 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
                   <td className="px-4 py-3 text-slate-500 text-xs whitespace-nowrap">{p.date}</td>
                   <td className="px-4 py-3 text-slate-600 text-xs">{p.receiver || '—'}</td>
                   <td className="px-4 py-3 text-xs">
-                    {p.method ? <Badge variant={p.method === 'Chuyển khoản' ? 'info' : 'neutral'}>{p.method}</Badge> : '—'}
+                    {(p.receiver && p.receiver !== 'Chưa nhận' && p.method) ? (
+                      <Badge variant={p.method === 'Chuyển khoản' ? 'info' : 'neutral'}>{p.method}</Badge>
+                    ) : '—'}
                   </td>
                   <td className="px-4 py-3">
                     <Badge variant={(!p.status || p.status === 'Hoàn thành') ? 'success' : 'warning'}>{p.status || 'Hoàn thành'}</Badge>
@@ -393,7 +415,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
                     <td className="px-4 py-3">
                       <div className="flex gap-1">
                         {p.status === 'Chưa tới chủ nhà' && (
-                          <button onClick={() => handleComplete(p.id)} disabled={acting === p.id} title="Xác nhận đã nhận"
+                          <button onClick={() => handleComplete(p)} disabled={acting === p.id} title="Xác nhận đã nhận"
                             className="inline-flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-50">
                             {acting === p.id ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />} Đã nhận
                           </button>
@@ -401,7 +423,8 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
                         <button onClick={() => openEdit(p)} title="Sửa thanh toán" className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-indigo-600">
                           <Pencil size={14} />
                         </button>
-                        <button onClick={() => handleExportPdf(p.id)} disabled={exportingId === p.id} title="Xuất PDF Biên Lai"
+                        <button onClick={() => handleExportPdf(p.id)} disabled={exportingId === p.id} 
+                          title={(!p.receiver || p.receiver === 'Chưa nhận') ? "Xuất PDF Thông báo thanh toán" : "Xuất PDF Biên lai"}
                           className="p-1.5 rounded-lg hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 disabled:opacity-50">
                           {exportingId === p.id ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
                         </button>
@@ -551,7 +574,43 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
         message={`Số tiền ${formatVND(form.amount)} thấp hơn mức định mức ${formatVND(getExpectedAmount())}. Giao dịch sẽ được ghi nhận là "Trả thiếu". Bạn có chắc muốn tiếp tục?`}
       />
 
-      <ConfirmDialog open={!!deleteId} onClose={() => setDeleteId(null)} onConfirm={handleDelete} loading={deleting} message="Xóa giao dịch thanh toán này? Dữ liệu sẽ được lưu vào history." />
+      {/* Receipt Confirmation Modal */}
+      <Modal open={!!completeItem} onClose={() => setCompleteItem(null)} title="Xác nhận nhận tiền" maxWidth="max-w-md">
+        <div className="space-y-4">
+          <p className="text-sm text-slate-600">
+            Bạn đang xác nhận đã nhận số tiền <span className="font-bold text-indigo-600">{completeItem ? formatVND(completeItem.amount) : ''}</span> cho <span className="font-medium text-slate-900">{completeItem?.payment_type}</span>.
+          </p>
+          
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Người nhận<RequiredStar /></label>
+            <select value={completeReceiver} onChange={e => setCompleteReceiver(e.target.value)}
+              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none">
+              {receivers.map(r => <option key={r} value={r}>{r}</option>)}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Phương thức<RequiredStar /></label>
+            <select value={completeMethod} onChange={e => setCompleteMethod(e.target.value)}
+              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none">
+              <option value="Tiền mặt">Tiền mặt</option>
+              <option value="Chuyển khoản">Chuyển khoản</option>
+            </select>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-2">
+            <button onClick={() => setCompleteItem(null)} className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800">Hủy</button>
+            <button onClick={handleDoComplete} disabled={acting === completeItem?.id}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-xl text-sm font-medium transition-all shadow-md shadow-indigo-100 disabled:opacity-50 flex items-center gap-2">
+              {acting === completeItem?.id && <Loader2 size={16} className="animate-spin" />}
+              Xác nhận
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <ConfirmDialog open={!!deleteId} title="Xóa thanh toán" message="Bạn có chắc chắn muốn xóa khoản thanh toán này? Hành động này không thể hoàn tác."
+        confirmLabel="Xóa" onConfirm={handleDelete} onClose={() => setDeleteId(null)} loading={deleting} />
     </div>
   );
 }
