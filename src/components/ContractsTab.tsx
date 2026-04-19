@@ -73,17 +73,17 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
   const { min: minMonths, max: maxMonths } = getContractMonthRange(data.settings);
 
   const displayRange = (start: string, end: string) => {
-    if (!start || !end) return `${start} → ${end || '—'}`;
+    if (!start || !end) return `${start || '—'} → ${end || '—'}`;
     const p1 = start.split('/');
     const p2 = end.split('/');
     if (p1.length === 3 && p2.length === 3) {
-      const first = `01/${p1[1]}/${p1[2]}`;
-      const lastDay = new Date(Number(p2[2]), Number(p2[1]), 0).getDate();
-      const last = `${String(lastDay).padStart(2, '0')}/${p2[1]}/${p2[2]}`;
       const m1 = Number(p1[1]), y1 = Number(p1[2]);
       const m2 = Number(p2[1]), y2 = Number(p2[2]);
-      const diffMonths = (y2 - y1) * 12 + (m2 - m1) + 1;
-      return `${diffMonths} tháng (${first} → ${last})`;
+      let diffMonths = (y2 - y1) * 12 + (m2 - m1);
+      // If end day is at least start day - 1, count it as a full month
+      const d1 = Number(p1[0]), d2 = Number(p2[0]);
+      if (d2 >= d1 - 1) diffMonths += 1;
+      return `${Math.max(1, diffMonths)} tháng (${start} → ${end})`;
     }
     return `${start} → ${end}`;
   };
@@ -102,7 +102,11 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
       const p1 = String(c.start_date).split('/');
       const p2 = String(c.end_date).split('/');
       if (p1.length === 3 && p2.length === 3) {
-        durationMonths = Math.max(1, (Number(p2[2]) - Number(p1[2])) * 12 + (Number(p2[1]) - Number(p1[1])) + 1);
+        const m1 = Number(p1[1]), y1 = Number(p1[2]);
+        const m2 = Number(p2[1]), y2 = Number(p2[2]);
+        durationMonths = (y2 - y1) * 12 + (m2 - m1);
+        if (Number(p2[0]) >= Number(p1[0]) - 1) durationMonths += 1;
+        durationMonths = Math.max(1, durationMonths);
       }
     }
 
@@ -327,7 +331,7 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
               type="number"
               min={minMonths} max={maxMonths}
               value={form.duration}
-              onChange={e => F('duration', Math.max(minMonths, Math.min(maxMonths, Number(e.target.value) || minMonths)))}
+              onChange={e => F('duration', Number(e.target.value) || 1)}
               className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none"
             />
             <p className="text-[11px] text-slate-400 mt-0.5">{minMonths}–{maxMonths} tháng</p>
