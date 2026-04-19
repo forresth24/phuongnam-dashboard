@@ -23,10 +23,26 @@ interface Props {
   onRefresh: () => void;
 }
 
-const makeEmptyForm = () => ({
+interface ContractForm {
+  room_id: string;
+  tenant: string;
+  phone: string;
+  cccd: string;
+  people_count: number | string;
+  start_date: string;
+  duration: number;
+  rent: number;
+  deposit: number;
+  start_electric: number;
+  discount: number;
+  note: string;
+  end_date: string;
+}
+
+const makeEmptyForm = (): ContractForm => ({
   room_id: '', tenant: '', phone: '', cccd: '', people_count: 1,
-  start_date: todayStr(), duration: 12, rent: 0, deposit: 0,
-  start_electric: 0, discount: 0, note: '',
+  start_date: todayStr(), duration: 1, rent: 0, deposit: 0,
+  start_electric: 0, discount: 0, note: '', end_date: '',
 });
 
 interface FieldError {
@@ -40,7 +56,7 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
   const [filter, setFilter] = useState<'active' | 'all'>('active');
   const [modalOpen, setModalOpen] = useState(false);
   const [editItem, setEditItem] = useState<any>(null);
-  const [form, setForm] = useState(makeEmptyForm());
+  const [form, setForm] = useState<ContractForm>(makeEmptyForm());
   const [errors, setErrors] = useState<FieldError>({});
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
@@ -56,21 +72,46 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
   const contracts = filter === 'active' ? data.contracts : data.contracts_all;
   const { min: minMonths, max: maxMonths } = getContractMonthRange(data.settings);
 
+  const displayRange = (start: string, end: string) => {
+    if (!start || !end) return `${start} → ${end || '—'}`;
+    const p1 = start.split('/');
+    const p2 = end.split('/');
+    if (p1.length === 3 && p2.length === 3) {
+      const first = `01/${p1[1]}/${p1[2]}`;
+      const lastDay = new Date(Number(p2[2]), Number(p2[1]), 0).getDate();
+      const last = `${String(lastDay).padStart(2, '0')}/${p2[1]}/${p2[2]}`;
+      const m1 = Number(p1[1]), y1 = Number(p1[2]);
+      const m2 = Number(p2[1]), y2 = Number(p2[2]);
+      const diffMonths = (y2 - y1) * 12 + (m2 - m1) + 1;
+      return `${diffMonths} tháng (${first} → ${last})`;
+    }
+    return `${start} → ${end}`;
+  };
+
   const openCreate = () => {
     setEditItem(null);
-    setForm(makeEmptyForm());
+    setForm({ ...makeEmptyForm(), duration: minMonths });
     setErrors({});
     setSaveError('');
     setModalOpen(true);
   };
 
   const openEdit = (c: any) => {
+    let durationMonths = 12;
+    if (c.start_date && c.end_date) {
+      const p1 = String(c.start_date).split('/');
+      const p2 = String(c.end_date).split('/');
+      if (p1.length === 3 && p2.length === 3) {
+        durationMonths = Math.max(1, (Number(p2[2]) - Number(p1[2])) * 12 + (Number(p2[1]) - Number(p1[1])) + 1);
+      }
+    }
+
     setEditItem(c);
     setForm({
       room_id: String(c.room_id || ''), tenant: String(c.tenant || ''), phone: String(c.phone || ''), cccd: '',
-      people_count: c.people_count || 1, start_date: String(c.start_date || ''), duration: 12,
+      people_count: c.people_count || 1, start_date: String(c.start_date || ''), duration: durationMonths,
       rent: c.rent || 0, deposit: c.deposit || 0, start_electric: c.start_electric || 0,
-      discount: c.discount || 0, note: String(c.note || ''),
+      discount: c.discount || 0, note: String(c.note || ''), end_date: c.end_date || '',
     });
     setErrors({});
     setSaveError('');
@@ -81,9 +122,11 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
     const e: FieldError = {};
     if (!form.room_id) e.room_id = 'Vui lòng chọn phòng';
     if (!form.tenant.trim()) e.tenant = 'Vui lòng nhập tên khách thuê';
-    if (!form.phone.trim() && !form.cccd.trim()) {
-      e.phone = 'Cần ít nhất SĐT hoặc CCCD';
-      e.cccd = ' ';
+    if (form.phone && !/^(0|84)(3|5|7|8|9)[0-9]{8}$/.test(form.phone)) {
+      e.phone = 'SĐT không hợp lệ';
+    }
+    if (form.cccd && !/^0[0-9]{11}$/.test(form.cccd)) {
+      e.cccd = 'CCCD gồm 12 số bắt đầu bằng 0';
     }
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -101,13 +144,24 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
     setSaving(true);
     setSaveError('');
     try {
+      let finalEndDate = form.end_date;
+      if (form.start_date && form.duration) {
+        const p = String(form.start_date).split('/');
+        if (p.length === 3) {
+          const d = new Date(Number(p[2]), Number(p[1]) - 1, Number(p[0]));
+          d.setMonth(d.getMonth() + Number(form.duration));
+          d.setDate(d.getDate() - 1);
+          finalEndDate = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+        }
+      }
+
       if (editItem) {
-        const payload: any = { ...form };
+        const payload: any = { ...form, deposit: form.rent, end_date: finalEndDate, people_count: Math.max(1, Number(form.people_count) || 1) };
         delete payload.duration;
         delete payload.cccd;
         await API.updateContract(config, editItem.id, payload);
       } else {
-        await API.createContract(config, form);
+        await API.createContract(config, { ...form, deposit: form.rent, end_date: finalEndDate, people_count: Math.max(1, Number(form.people_count) || 1) });
       }
       setModalOpen(false);
       onRefresh();
@@ -147,8 +201,6 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
   const F = (k: string, v: any) => {
     setForm({ ...form, [k]: v });
     if ((errors as any)[k]) setErrors({ ...errors, [k]: undefined });
-    if (k === 'phone' && errors.cccd) setErrors({ ...errors, phone: undefined, cccd: undefined });
-    if (k === 'cccd' && errors.phone) setErrors({ ...errors, phone: undefined, cccd: undefined });
   };
 
   const RequiredStar = () => <span className="text-rose-500 ml-0.5">*</span>;
@@ -196,7 +248,7 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
                   <td className="px-4 py-3 font-medium">{c.room_id}</td>
                   <td className="px-4 py-3">{c.tenant}</td>
                   <td className="px-4 py-3 text-slate-500">{c.phone}</td>
-                  <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{c.start_date} → {c.end_date || '—'}</td>
+                  <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{displayRange(c.start_date, c.end_date)}</td>
                   <td className="px-4 py-3 font-medium text-indigo-600">{formatVND(c.rent)}</td>
                   <td className="px-4 py-3">{formatVND(c.deposit || 0)}</td>
                   <td className="px-4 py-3"><Badge variant={c.status === 'active' ? 'success' : 'neutral'}>{c.status === 'active' ? 'Đang hoạt động' : 'Đã kết thúc'}</Badge></td>
@@ -245,21 +297,22 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
           </div>
           {/* Phone */}
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Số điện thoại<RequiredStar /></label>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Số điện thoại</label>
             <input value={form.phone} onChange={e => F('phone', e.target.value)} placeholder="0901234567"
               className={`w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none ${errors.phone ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`} />
             <FieldErr msg={errors.phone} />
           </div>
           {/* CCCD */}
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Số CCCD<RequiredStar /></label>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Số CCCD</label>
             <input value={form.cccd} onChange={e => F('cccd', e.target.value)} placeholder="079123456789"
               className={`w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none ${errors.cccd ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`} />
+            <FieldErr msg={errors.cccd} />
           </div>
           {/* People count */}
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Số người ở</label>
-            <input type="number" value={form.people_count} onChange={e => F('people_count', Number(e.target.value))} min={1}
+            <input type="number" value={form.people_count} onChange={e => F('people_count', e.target.value)} min={1}
               className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
           </div>
           {/* Start date */}
@@ -268,34 +321,23 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
             <DatePickerInput value={form.start_date} onChange={v => F('start_date', v)} />
           </div>
           {/* Duration */}
-          {!editItem && (
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Thời hạn HĐ (tháng)</label>
-              <input
-                type="number"
-                min={minMonths} max={maxMonths}
-                value={form.duration}
-                onChange={e => F('duration', Math.max(minMonths, Math.min(maxMonths, Number(e.target.value) || minMonths)))}
-                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none"
-              />
-              <p className="text-[11px] text-slate-400 mt-0.5">{minMonths}–{maxMonths} tháng</p>
-            </div>
-          )}
-          {/* Rent — auto from room */}
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Thời hạn HĐ (tháng)</label>
+            <input
+              type="number"
+              min={minMonths} max={maxMonths}
+              value={form.duration}
+              onChange={e => F('duration', Math.max(minMonths, Math.min(maxMonths, Number(e.target.value) || minMonths)))}
+              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none"
+            />
+            <p className="text-[11px] text-slate-400 mt-0.5">{minMonths}–{maxMonths} tháng</p>
+          </div>
+          {/* Rent */}
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Giá thuê/tháng</label>
-            <div className="w-full border border-slate-100 bg-slate-50 rounded-xl px-3 py-2 text-sm font-medium text-indigo-600">
-              {form.rent > 0 ? formatVND(form.rent) : '—'}
-            </div>
-            <p className="text-[11px] text-slate-400 mt-0.5">Tự động theo giá phòng</p>
-          </div>
-          {/* Deposit — auto = 1 month rent */}
-          <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Tiền cọc (1 tháng)</label>
-            <div className="w-full border border-slate-100 bg-slate-50 rounded-xl px-3 py-2 text-sm font-medium text-slate-700">
-              {form.deposit > 0 ? formatVND(form.deposit) : '—'}
-            </div>
-            <p className="text-[11px] text-slate-400 mt-0.5">= giá thuê</p>
+            <input type="number" value={form.rent} onChange={e => F('rent', Number(e.target.value))}
+              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
+            {form.rent > 0 && <p className="text-[11px] text-slate-400 mt-0.5">{formatVND(form.rent)}</p>}
           </div>
           {/* Electric */}
           <div>

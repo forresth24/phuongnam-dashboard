@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Trash2, CheckCircle2, Loader2, FileText } from 'lucide-react';
+import { Plus, Trash2, CheckCircle2, Loader2, FileText, Pencil } from 'lucide-react';
 import type { AppConfig, DashboardData, UserRole } from '../lib/api';
 import { API, downloadBase64Pdf } from '../lib/api';
 import { Badge } from './ui/Badge';
@@ -38,13 +38,14 @@ interface PaymentForm {
   phone: string;
   cccd: string;
   duration: number;
+  start_date?: string;
 }
 
 const makeEmptyForm = (): PaymentForm => ({
   room_id: '', contract_id: '', payment_type: 'Tiền phòng', amount: 0,
-  date: todayStr(), receiver: '', method: 'Tiền mặt',
+  date: todayStr(), receiver: 'Chưa nhận', method: 'Tiền mặt',
   status: 'Chưa tới chủ nhà', is_partial: false, note: '',
-  tenant: '', phone: '', cccd: '', duration: 12,
+  tenant: '', phone: '', cccd: '', duration: 12, start_date: todayStr(),
 });
 
 interface FieldError {
@@ -54,6 +55,8 @@ interface FieldError {
   tenant?: string;
   phone?: string;
   cccd?: string;
+  note?: string;
+  start_date?: string;
 }
 
 export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
@@ -62,6 +65,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
   const [deleting, setDeleting] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState(makeEmptyForm());
+  const [editItem, setEditItem] = useState<any>(null);
   const [errors, setErrors] = useState<FieldError>({});
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
@@ -81,21 +85,61 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
   const getActiveContract = (roomId: string) =>
     data.contracts.find((c: any) => String(c.room_id).trim() === String(roomId).trim());
 
-  const needsNewContract = form.room_id && !getActiveContract(form.room_id);
+  const needsNewContract = !!(form.room_id && !getActiveContract(form.room_id));
+
+  const calculateExpectedAmount = (type: string, roomId: string, isNewContract?: boolean, startDate?: string): number => {
+    const room = data.rooms.find((r: any) => r.id === roomId);
+    const price = room ? Number(room.price) || 0 : 0;
+    const contract = getActiveContract(roomId);
+    
+    const basePrice = contract ? (Number(contract.rent) || price) : price;
+    const peopleCount = contract ? Number(contract.people_count) || 1 : 1;
+    const waterPrice = Number(data.settings.WATER_PRICE_PER_PERSON) || 0;
+    const surcharge = Number(data.settings.SURCHARGE_PER_PERSON) || 0;
+    const livingFee = (waterPrice + surcharge) * peopleCount;
+    const deposit = contract ? Number(contract.deposit) || basePrice : basePrice;
+
+    let currentPrice = basePrice;
+    let currentLivingFee = livingFee;
+
+    if (isNewContract && startDate) {
+      const parts = startDate.split('/');
+      if (parts.length === 3) {
+        const d = Number(parts[0]);
+        const m = Number(parts[1]);
+        const y = Number(parts[2]);
+        const daysInMonth = new Date(y, m, 0).getDate();
+        const days = daysInMonth - d + 1;
+        currentPrice = Math.round((basePrice / 30) * days);
+        currentLivingFee = Math.round((livingFee / 30) * days);
+      }
+    }
+
+    let total = 0;
+    if (type === 'Tiền phòng') total = currentPrice;
+    if (type === 'Phí sinh hoạt') total = currentLivingFee;
+    if (type === 'Tiền phòng + Phí sinh hoạt') total = currentPrice + currentLivingFee;
+    if (type === 'Tiền phòng + Phí sinh hoạt + Tiền cọc') total = currentPrice + currentLivingFee + deposit;
+    if (type === 'Tiền cọc') total = deposit;
+
+    if (total > 0) {
+      return Math.ceil(total / 10000) * 10000;
+    }
+    return 0;
+  };
 
   const getExpectedAmount = (): number => {
-    const room = data.rooms.find((r: any) => r.id === form.room_id);
-    return room ? Number(room.price) || 0 : 0;
+    return calculateExpectedAmount(form.payment_type, form.room_id, needsNewContract, form.start_date);
   };
 
   const onRoomChange = (roomId: string) => {
     const contract = getActiveContract(roomId);
-    const room = data.rooms.find((r: any) => r.id === roomId);
-    const price = room ? Number(room.price) || 0 : 0;
+    const startDate = todayStr();
+    const amount = calculateExpectedAmount(form.payment_type, roomId, !contract, startDate);
     setForm({
       ...form, room_id: roomId, contract_id: contract ? contract.id : '',
-      amount: price, tenant: contract ? contract.tenant : '',
-      phone: contract ? contract.phone : '', cccd: '',
+      amount: amount, tenant: contract ? contract.tenant : '',
+      phone: contract ? contract.phone : '', cccd: '', start_date: startDate,
     });
     if (errors.room_id) setErrors({ ...errors, room_id: undefined });
   };
@@ -110,12 +154,17 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
     const e: FieldError = {};
     if (!form.room_id) e.room_id = 'Vui lòng chọn phòng';
     if (!form.amount || form.amount <= 0) e.amount = 'Vui lòng nhập số tiền';
+    if (form.payment_type === 'Khác' && !form.note.trim()) {
+      e.note = 'Bắt buộc nhập Ghi chú';
+    }
     if (!form.receiver.trim()) e.receiver = 'Vui lòng chọn người nhận';
     if (needsNewContract) {
       if (!form.tenant.trim()) e.tenant = 'Vui lòng nhập tên khách thuê';
-      if (!form.phone.trim() && !form.cccd.trim()) {
-        e.phone = 'Cần ít nhất SĐT hoặc CCCD';
-        e.cccd = ' ';
+      if (form.phone && !/^(0|84)(3|5|7|8|9)[0-9]{8}$/.test(form.phone)) {
+        e.phone = 'SĐT không hợp lệ';
+      }
+      if (form.cccd && !/^0[0-9]{11}$/.test(form.cccd)) {
+        e.cccd = 'CCCD gồm 12 số bắt đầu bằng 0';
       }
     }
     setErrors(e);
@@ -130,7 +179,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
       if (!contractId && needsNewContract) {
         const res = await API.createContract(config, {
           room_id: form.room_id, tenant: form.tenant,
-          phone: form.phone, cccd: form.cccd, duration: form.duration,
+          phone: form.phone, cccd: form.cccd, duration: form.duration, start_date: form.start_date,
         });
         contractId = res.id;
       }
@@ -139,13 +188,31 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
       const expected = getExpectedAmount();
       const isPartial = form.payment_type === 'Tiền phòng' && form.amount < expected;
 
-      await API.createPayment(config, {
-        contract_id: contractId, payment_type: form.payment_type,
-        amount: form.amount, date: form.date || todayStr(),
-        note: form.note, receiver: form.receiver, method: form.method,
-        status: form.status, is_partial: isPartial,
-        total_amount_calculated: expected,
-      });
+      if (editItem) {
+        let finalNote = form.note;
+        if (form.amount !== editItem.amount || form.payment_type !== editItem.payment_type) {
+          finalNote += ` [Sửa ${todayStr()}]`;
+        }
+        await API.updatePayment(config, editItem.id, {
+          payment_type: form.payment_type,
+          amount: form.amount,
+          date: form.date,
+          receiver: form.receiver,
+          method: form.method,
+          status: form.status,
+          is_partial: isPartial,
+          note: finalNote.trim(),
+          total_amount_calculated: expected,
+        });
+      } else {
+        await API.createPayment(config, {
+          contract_id: contractId, payment_type: form.payment_type,
+          amount: form.amount, date: form.date || todayStr(),
+          note: form.note, receiver: form.receiver, method: form.method,
+          status: form.status, is_partial: isPartial,
+          total_amount_calculated: expected,
+        });
+      }
       setModalOpen(false);
       onRefresh();
     } catch (e: any) { setSaveError(e.message || 'Lỗi không xác định'); }
@@ -197,7 +264,33 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
   };
 
   const openCreate = () => {
-    setForm(makeEmptyForm());
+    setEditItem(null);
+    setForm({ ...makeEmptyForm(), duration: minMonths });
+    setErrors({});
+    setSaveError('');
+    setModalOpen(true);
+  };
+
+  const openEdit = (p: any) => {
+    const contract = data.contracts_all.find((c: any) => c.id === p.contract_id);
+    setEditItem(p);
+    setForm({
+      room_id: contract ? contract.room_id : '',
+      contract_id: p.contract_id,
+      payment_type: p.payment_type || 'Tiền phòng',
+      amount: p.amount,
+      date: p.date,
+      receiver: p.receiver || 'Chưa nhận',
+      method: p.method || 'Tiền mặt',
+      status: p.status || 'Chưa tới chủ nhà',
+      is_partial: String(p.is_partial).toUpperCase() === 'TRUE',
+      note: p.note || '',
+      tenant: contract ? contract.tenant : '',
+      phone: contract ? contract.phone : '',
+      cccd: '',
+      duration: 12,
+      start_date: todayStr(),
+    });
     setErrors({});
     setSaveError('');
     setModalOpen(true);
@@ -213,8 +306,30 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
   const F = (k: string, v: any) => {
     setForm({ ...form, [k]: v });
     if ((errors as any)[k]) setErrors({ ...errors, [k]: undefined });
-    if (k === 'phone' && errors.cccd) setErrors({ ...errors, phone: undefined, cccd: undefined });
-    if (k === 'cccd' && errors.phone) setErrors({ ...errors, phone: undefined, cccd: undefined });
+  };
+
+  const handleTypeChange = (type: string) => {
+    const isNew = form.room_id ? !form.contract_id : false;
+    const newAmount = calculateExpectedAmount(type, form.room_id, isNew, form.start_date);
+    setForm({ ...form, payment_type: type, amount: newAmount > 0 || type !== 'Khác' ? newAmount : form.amount });
+    if (errors.amount) setErrors({ ...errors, amount: undefined });
+  };
+
+  const handleAmountChange = (val: number) => {
+    const isNew = form.room_id ? !form.contract_id : false;
+    const expected = calculateExpectedAmount(form.payment_type, form.room_id, isNew, form.start_date);
+    if (val !== expected && form.payment_type !== 'Khác') {
+      setForm({ ...form, amount: val, payment_type: 'Khác' });
+      if (errors.amount) setErrors({ ...errors, amount: undefined });
+    } else {
+      F('amount', val);
+    }
+  };
+
+  const handleStartDateChange = (val: string) => {
+    const isNew = form.room_id ? !form.contract_id : false;
+    const newAmount = calculateExpectedAmount(form.payment_type, form.room_id, isNew, val);
+    setForm({ ...form, start_date: val, amount: newAmount > 0 || form.payment_type !== 'Khác' ? newAmount : form.amount });
   };
 
   const RequiredStar = () => <span className="text-rose-500 ml-0.5">*</span>;
@@ -283,6 +398,9 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
                             {acting === p.id ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />} Đã nhận
                           </button>
                         )}
+                        <button onClick={() => openEdit(p)} title="Sửa thanh toán" className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-indigo-600">
+                          <Pencil size={14} />
+                        </button>
                         <button onClick={() => handleExportPdf(p.id)} disabled={exportingId === p.id} title="Xuất PDF Biên Lai"
                           className="p-1.5 rounded-lg hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 disabled:opacity-50">
                           {exportingId === p.id ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
@@ -300,14 +418,14 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
       </div>
 
       {/* Quick Payment Modal */}
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Thu tiền nhanh" maxWidth="max-w-xl">
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editItem ? 'Sửa khoản thu' : 'Thu tiền nhanh'} maxWidth="max-w-xl">
         <div className="space-y-4">
-          {/* Room */}
+          {/* Room Selection */}
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Chọn phòng<RequiredStar /></label>
-            <select value={form.room_id} onChange={e => onRoomChange(e.target.value)}
-              className={`w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none ${errors.room_id ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`}>
-              <option value="">Chọn phòng</option>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Mã phòng<RequiredStar /></label>
+            <select value={form.room_id} onChange={e => onRoomChange(e.target.value)} disabled={!!editItem}
+              className={`w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none disabled:bg-slate-50 ${errors.room_id ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`}>
+              <option value="">Chọn phòng...</option>
               {data.rooms.map((r: any) => {
                 const hasHD = !!getActiveContract(r.id);
                 return <option key={r.id} value={r.id}>{r.name} ({r.id}) {hasHD ? '📋' : '🆕'}</option>;
@@ -328,7 +446,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
                   <FieldErr msg={errors.tenant} />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">Số điện thoại<RequiredStar /></label>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Số điện thoại</label>
                   <input value={form.phone} onChange={e => F('phone', e.target.value)} placeholder="0901234567"
                     className={`w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none ${errors.phone ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`} />
                   <FieldErr msg={errors.phone} />
@@ -337,6 +455,11 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
                   <label className="block text-xs font-medium text-slate-600 mb-1">Số CCCD</label>
                   <input value={form.cccd} onChange={e => F('cccd', e.target.value)} placeholder="079123456789"
                     className={`w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none ${errors.cccd ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`} />
+                  <FieldErr msg={errors.cccd} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Ngày vào ở (tính tiền HĐ mới)</label>
+                  <DatePickerInput value={form.start_date || ''} onChange={handleStartDateChange} />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">Thời hạn HĐ (tháng)</label>
@@ -360,18 +483,19 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Loại giao dịch</label>
-              <select value={form.payment_type} onChange={e => F('payment_type', e.target.value)}
+              <select value={form.payment_type} onChange={e => handleTypeChange(e.target.value)}
                 className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none">
                 <option value="Tiền phòng">Tiền phòng</option>
-                <option value="Tiền cọc giữ phòng">Tiền cọc giữ phòng</option>
-                <option value="Tiền cọc phòng">Tiền cọc phòng</option>
+                <option value="Tiền phòng + Phí sinh hoạt">Tiền phòng + Phí sinh hoạt</option>
+                <option value="Tiền phòng + Phí sinh hoạt + Tiền cọc">Tiền phòng + Phí sinh hoạt + Tiền cọc</option>
+                <option value="Tiền cọc">Tiền cọc</option>
                 <option value="Phí sinh hoạt">Phí sinh hoạt</option>
                 <option value="Khác">Khác</option>
               </select>
             </div>
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Số tiền<RequiredStar /></label>
-              <input type="number" value={form.amount} onChange={e => F('amount', Number(e.target.value))}
+              <input type="number" value={form.amount} onChange={e => handleAmountChange(Number(e.target.value))}
                 className={`w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none ${errors.amount ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`} />
               {form.amount > 0 && <p className="text-[11px] text-slate-400 mt-0.5">{formatVND(form.amount)}</p>}
               <FieldErr msg={errors.amount} />
@@ -384,7 +508,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
               <label className="block text-xs font-medium text-slate-600 mb-1">Người nhận<RequiredStar /></label>
               <select value={form.receiver} onChange={e => onReceiverChange(e.target.value)}
                 className={`w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none ${errors.receiver ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`}>
-                <option value="">Chọn người nhận</option>
+                <option value="Chưa nhận">Chưa nhận</option>
                 {receivers.map(r => <option key={r} value={r}>{r}</option>)}
               </select>
               <FieldErr msg={errors.receiver} />
@@ -397,21 +521,13 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
                 <option value="Chuyển khoản">Chuyển khoản</option>
               </select>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Trạng thái</label>
-              <select value={form.status} onChange={e => F('status', e.target.value)}
-                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none">
-                <option value="Chưa tới chủ nhà">Chưa tới chủ nhà</option>
-                <option value="Hoàn thành">Hoàn thành (đã tới chủ nhà)</option>
-              </select>
-              <p className="text-[10px] text-slate-400 mt-0.5">Tự động theo người nhận</p>
-            </div>
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Ghi chú</label>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Ghi chú{form.payment_type === 'Khác' && <RequiredStar />}</label>
             <textarea value={form.note} onChange={e => F('note', e.target.value)} rows={2}
-              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
+              className={`w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none ${errors.note ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`} />
+            <FieldErr msg={errors.note} />
           </div>
 
           {saveError && <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-sm text-rose-700">⚠️ {saveError}</div>}
