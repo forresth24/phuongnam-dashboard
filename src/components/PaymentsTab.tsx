@@ -37,6 +37,10 @@ interface PaymentForm {
   tenant: string;
   phone: string;
   cccd: string;
+  issue_date: string;
+  issue_place: string;
+  address: string;
+  dob: string;
   duration: number;
   start_date?: string;
 }
@@ -45,7 +49,7 @@ const makeEmptyForm = (): PaymentForm => ({
   room_id: '', contract_id: '', payment_type: 'Tiền phòng', amount: 0,
   date: todayStr(), receiver: 'Chưa nhận', method: 'Tiền mặt',
   status: 'Chưa tới chủ nhà', is_partial: false, note: '',
-  tenant: '', phone: '', cccd: '', duration: 12, start_date: todayStr(),
+  tenant: '', phone: '', cccd: '', issue_date: '', issue_place: '', address: '', dob: '', duration: 12, start_date: todayStr(),
 });
 
 interface FieldError {
@@ -91,7 +95,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
   const needsNewContract = !!(form.room_id && !getActiveContract(form.room_id));
 
   const calculateExpectedAmount = (type: string, roomId: string, isNewContract?: boolean, startDate?: string): number => {
-    const room = data.rooms.find((r: any) => r.id === roomId);
+    const room = data.rooms.find((r: any) => String(r.id) === String(roomId));
     const price = room ? Number(room.price) || 0 : 0;
     const contract = getActiveContract(roomId);
     
@@ -142,7 +146,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
     setForm({
       ...form, room_id: roomId, contract_id: contract ? contract.id : '',
       amount: amount, tenant: contract ? contract.tenant : '',
-      phone: contract ? contract.phone : '', cccd: '', start_date: startDate,
+      phone: contract ? contract.phone : '', cccd: '', issue_date: '', issue_place: '', address: '', dob: '', start_date: startDate,
     });
     if (errors.room_id) setErrors({ ...errors, room_id: undefined });
   };
@@ -182,7 +186,9 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
       if (!contractId && needsNewContract) {
         const res = await API.createContract(config, {
           room_id: form.room_id, tenant: form.tenant,
-          phone: form.phone, cccd: form.cccd, duration: form.duration, start_date: form.start_date,
+          phone: form.phone, cccd: form.cccd, issue_date: form.issue_date,
+          issue_place: form.issue_place, address: form.address, dob: form.dob,
+          duration: form.duration, start_date: form.start_date,
         });
         contractId = res.id;
       }
@@ -308,6 +314,10 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
       tenant: contract ? contract.tenant : '',
       phone: contract ? contract.phone : '',
       cccd: '',
+      issue_date: '',
+      issue_place: '',
+      address: '',
+      dob: '',
       duration: 12,
       start_date: todayStr(),
     });
@@ -479,6 +489,25 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
                   <input value={form.cccd} onChange={e => F('cccd', e.target.value)} placeholder="079123456789"
                     className={`w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none ${errors.cccd ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`} />
                   <FieldErr msg={errors.cccd} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Ngày cấp CCCD</label>
+                  <DatePickerInput value={form.issue_date} onChange={v => F('issue_date', v)} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Nơi cấp CCCD</label>
+                  <input value={form.issue_place} onChange={e => F('issue_place', e.target.value)} placeholder="CA TP.HCM"
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Năm sinh</label>
+                  <input value={form.dob} onChange={e => F('dob', e.target.value)} placeholder="1995"
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Địa chỉ thường trú</label>
+                  <input value={form.address} onChange={e => F('address', e.target.value)} placeholder="Số 123, Đường ABC, Quận 1, TP.HCM"
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">Ngày vào ở (tính tiền HĐ mới)</label>

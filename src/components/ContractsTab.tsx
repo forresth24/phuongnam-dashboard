@@ -29,6 +29,7 @@ interface ContractForm {
   phone: string;
   cccd: string;
   people_count: number | string;
+  move_in_date: string;
   start_date: string;
   duration: number;
   rent: number;
@@ -41,7 +42,7 @@ interface ContractForm {
 
 const makeEmptyForm = (): ContractForm => ({
   room_id: '', tenant: '', phone: '', cccd: '', people_count: 1,
-  start_date: todayStr(), duration: 1, rent: 0, deposit: 0,
+  move_in_date: todayStr(), start_date: '', duration: 1, rent: 0, deposit: 0,
   start_electric: 0, discount: 0, note: '', end_date: '',
 });
 
@@ -97,23 +98,19 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
   };
 
   const openEdit = (c: any) => {
-    let durationMonths = 12;
-    if (c.start_date && c.end_date) {
-      const p1 = String(c.start_date).split('/');
-      const p2 = String(c.end_date).split('/');
-      if (p1.length === 3 && p2.length === 3) {
-        const m1 = Number(p1[1]), y1 = Number(p1[2]);
-        const m2 = Number(p2[1]), y2 = Number(p2[2]);
-        durationMonths = (y2 - y1) * 12 + (m2 - m1);
-        if (Number(p2[0]) >= Number(p1[0]) - 1) durationMonths += 1;
-        durationMonths = Math.max(1, durationMonths);
-      }
-    }
+    let durationMonths = Number(c.duration) || 12;
+
+    // Find cccd from tenants sheet
+    const t = data.tenants.find((tenant: any) => 
+      String(tenant.room_id).trim() === String(c.room_id).trim() && 
+      String(tenant.name).trim() === String(c.tenant).trim()
+    );
+    const tenantCccd = t ? t.cccd : '';
 
     setEditItem(c);
     setForm({
-      room_id: String(c.room_id || ''), tenant: String(c.tenant || ''), phone: String(c.phone || ''), cccd: '',
-      people_count: c.people_count || 1, start_date: String(c.start_date || ''), duration: durationMonths,
+      room_id: String(c.room_id || ''), tenant: String(c.tenant || ''), phone: String(c.phone || ''), cccd: tenantCccd,
+      people_count: c.people_count || 1, move_in_date: String(c.move_in_date || c.start_date || ''), start_date: String(c.start_date || ''), duration: durationMonths,
       rent: c.rent || 0, deposit: c.deposit || 0, start_electric: c.start_electric || 0,
       discount: c.discount || 0, note: String(c.note || ''), end_date: c.end_date || '',
     });
@@ -148,24 +145,12 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
     setSaving(true);
     setSaveError('');
     try {
-      let finalEndDate = form.end_date;
-      if (form.start_date && form.duration) {
-        const p = String(form.start_date).split('/');
-        if (p.length === 3) {
-          const d = new Date(Number(p[2]), Number(p[1]) - 1, Number(p[0]));
-          d.setMonth(d.getMonth() + Number(form.duration));
-          d.setDate(d.getDate() - 1);
-          finalEndDate = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
-        }
-      }
-
       if (editItem) {
-        const payload: any = { ...form, deposit: form.rent, end_date: finalEndDate, people_count: Math.max(1, Number(form.people_count) || 1) };
-        delete payload.duration;
+        const payload: any = { ...form, deposit: form.rent, people_count: Math.max(1, Number(form.people_count) || 1) };
         delete payload.cccd;
         await API.updateContract(config, editItem.id, payload);
       } else {
-        await API.createContract(config, { ...form, deposit: form.rent, end_date: finalEndDate, people_count: Math.max(1, Number(form.people_count) || 1) });
+        await API.createContract(config, { ...form, deposit: form.rent, people_count: Math.max(1, Number(form.people_count) || 1) });
       }
       setModalOpen(false);
       onRefresh();
@@ -319,10 +304,10 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
             <input type="number" value={form.people_count} onChange={e => F('people_count', e.target.value)} min={1}
               className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
           </div>
-          {/* Start date */}
+          {/* Move-in date */}
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Ngày bắt đầu</label>
-            <DatePickerInput value={form.start_date} onChange={v => F('start_date', v)} />
+            <label className="block text-xs font-medium text-slate-600 mb-1">Ngày vào ở (tính tiền HĐ mới)</label>
+            <DatePickerInput value={form.move_in_date} onChange={v => F('move_in_date', v)} />
           </div>
           {/* Duration */}
           <div>

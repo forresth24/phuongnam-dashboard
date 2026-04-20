@@ -84,7 +84,10 @@ export function RoomsTab({ config, data, loading, role, onRefresh, onNavigate }:
     if (activeContract) {
       const cp = data.payments.filter((p: any) => String(p.contract_id).trim() === String(activeContract.id).trim());
       hasDeposit = cp.some((p: any) => String(p.payment_type || '').toLowerCase().includes('cọc'));
-      hasPaidCurrentMonth = cp.some((p: any) => p.payment_type === 'Tiền phòng' && isPaymentInCurrentMonth(p.date));
+      hasPaidCurrentMonth = cp.some((p: any) => 
+        String(p.payment_type || '').toLowerCase().includes('tiền phòng') && 
+        isPaymentInCurrentMonth(p.date)
+      );
     }
     return { hasContract, hasDeposit, hasPaidCurrentMonth, memberCount: roomTenants.length, contractNote: activeContract?.note };
   };
@@ -110,7 +113,7 @@ export function RoomsTab({ config, data, loading, role, onRefresh, onNavigate }:
   };
 
   const calculateExpectedAmount = (type: string, roomId: string, isNewContract?: boolean, startDate?: string): number => {
-    const room = rooms.find((r: any) => r.id === roomId);
+    const room = data.rooms.find((r: any) => String(r.id) === String(roomId));
     const price = room ? Number(room.price) || 0 : 0;
     const contract = getActiveContract(roomId);
     
