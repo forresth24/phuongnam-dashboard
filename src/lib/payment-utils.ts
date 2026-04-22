@@ -13,6 +13,11 @@ export const todayStr = () => {
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
 };
 
+export const firstDayOfMonthStr = () => {
+  const d = new Date();
+  return `01/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+};
+
 export function getCurrentMonthYear() {
   const now = new Date();
   return { month: now.getMonth() + 1, year: now.getFullYear() };
@@ -32,7 +37,6 @@ export function isPaymentInCurrentMonth(dateStr: string) {
 export interface PaymentFormData {
   room_id: string;
   contract_id: string;
-  payment_type: string;
   amount: number;
   date: string;
   receiver: string;
@@ -57,7 +61,11 @@ export interface PaymentFormData {
   extra_person_fee: number;
   living_fee: number;
   water_fee: number;
+  electric_fee: number;
   deposit_fee: number;
+  included_fields: string[]; // e.g. ['base_rent', 'water_fee']
+  days_stayed: number;
+  days_in_month: number;
 }
 
 export interface PaymentFieldError {
@@ -72,14 +80,16 @@ export interface PaymentFieldError {
 }
 
 export const makeEmptyPaymentForm = (defaultDuration: number = 12): PaymentFormData => ({
-  room_id: '', contract_id: '', payment_type: 'Tiền phòng', amount: 0,
+  room_id: '', contract_id: '', amount: 0,
   date: todayStr(), receiver: 'Chưa nhận', method: 'Tiền mặt',
   status: 'Chưa tới chủ nhà', is_partial: false, note: '',
   tenant: '', phone: '', cccd: '', issue_date: '', issue_place: '', address: '', dob: '',
-  duration: defaultDuration, start_date: todayStr(),
+  duration: defaultDuration, start_date: firstDayOfMonthStr(),
   people_count: 1,
   discount: 0,
-  base_rent: 0, extra_person_fee: 0, living_fee: 0, water_fee: 0, deposit_fee: 0,
+  base_rent: 0, extra_person_fee: 0, living_fee: 0, water_fee: 0, electric_fee: 0, deposit_fee: 0,
+  included_fields: ['base_rent', 'extra_person_fee', 'living_fee', 'water_fee', 'electric_fee'],
+  days_stayed: 30, days_in_month: 30,
 });
 
 // ─── Expected Amount Calculation ──────────────────────────
@@ -91,49 +101,54 @@ export interface ExpectedAmountResult {
   extraPersonFee: number;
   internetSurcharge: number;
   livingFee: number;
+  electricFee: number;
   deposit: number;
   daysStayed: number;
   daysInMonth: number;
+  // Full month values (unprorated)
+  fullBasePrice: number;
+  fullExtraFee: number;
+  fullLivingFee: number;
+  fullSurcharge: number;
+  fullElectric: number;
 }
 
 /**
  * Calculate expected payment amount for a room.
+ * Always calculates all components: Room, Water, Service, Electricity, Deposit.
  * 
- * Price priority:
- * 1. If there's an active contract → use contract.rent
- * 2. If no contract → use room.price (NOT room.original_price)
+ * Logic:
+ * - Tiền cọc = full base price.
+ * - Others = prorated if target month is move-in month.
  * 
- * @param type - Payment type string
  * @param roomId - Room ID
  * @param data - Full dashboard data
  * @param getActiveContract - Function to look up active contract for a room
- * @param isNewContract - Whether this is for a new contract (prorate)
- * @param startDate - Start date for proration (dd/MM/yyyy)
+ * @param isNewContract - Whether this is for a new contract (treats start_date as move-in date)
+ * @param targetDate - Date of calculation (default today)
  * @param peopleCountOverride - Override people count
  */
 export function calculateExpectedAmount(
-  type: string,
   roomId: string,
   data: DashboardData,
   getActiveContract: (roomId: string) => any,
   isNewContract?: boolean,
-  startDate?: string,
+  targetDate?: string,
   peopleCountOverride?: number,
 ): ExpectedAmountResult {
   const room = data.rooms.find((r: any) => String(r.id) === String(roomId));
-  // BUG FIX: Always use room.price, never room.original_price
-  // original_price is only for display purposes (strikethrough price)
   const price = room ? Number(room.price) || 0 : 0;
   const contract = getActiveContract(roomId);
 
-  // For existing contract, use its rent; for new rooms, use room.price
   const basePrice = contract ? (Number(contract.rent) || price) : price;
 
   const peopleCount = peopleCountOverride !== undefined
     ? peopleCountOverride
     : (contract ? Number(contract.people_count) || 1 : 1);
+  
   const waterPrice = Number(data.settings.WATER_PRICE_PER_PERSON) || 0;
   const internetSurcharge = Number(data.settings.SURCHARGE_PER_PERSON) || 0;
+  const electricPrice = Number(data.settings.ELECTRIC_PRICE_PER_MONTH) || 0; // Assuming fixed fee if calculating this way
   const extraFeeSingle = Number(data.settings.EXTRA_FEE_SINGLE) || 0;
   const extraFeeDouble = Number(data.settings.EXTRA_FEE_DOUBLE) || 0;
 
@@ -149,30 +164,50 @@ export function calculateExpectedAmount(
     }
   }
 
-  let totalInternetSurcharge = internetSurcharge * peopleCount;
-  let livingFee = waterPrice * peopleCount;
-  const unproratedPrice = basePrice;
-  const deposit = contract
-    ? Number(contract.deposit) || (unproratedPrice + totalInternetSurcharge + extraPersonFee)
-    : (unproratedPrice + totalInternetSurcharge + extraPersonFee);
+  const livingFee = waterPrice * peopleCount;
+  const totalInternetSurcharge = internetSurcharge * peopleCount;
+  const totalElectricFee = electricPrice * peopleCount;
 
-  let currentPrice = unproratedPrice;
-  let currentLivingFee = livingFee;
+  // Tiền cọc always full room price
+  const deposit = basePrice;
+
   let daysStayed = 0;
-  let daysInMonth = 30; // default
+  let daysInMonth = 30;
 
-  if (startDate) {
-    const parts = startDate.split('/');
-    if (parts.length === 3) {
-      const d = Number(parts[0]);
-      const m = Number(parts[1]);
-      const y = Number(parts[2]);
-      daysInMonth = new Date(y, m, 0).getDate();
-      if (isNewContract) {
-        daysStayed = daysInMonth - d + 1;
-      } else {
-        daysStayed = daysInMonth;
+  // Determine proration
+  const calcDate = targetDate || todayStr();
+  const parts = calcDate.split('/');
+  if (parts.length === 3) {
+    const m = Number(parts[1]);
+    const y = Number(parts[2]);
+    daysInMonth = new Date(y, m, 0).getDate();
+    
+    // Check if move-in date is in this month
+    const moveInDateStr = contract ? contract.move_in_date || contract.start_date : (isNewContract ? targetDate : '');
+    let isMoveInMonth = false;
+    let moveInDay = 1;
+
+    if (moveInDateStr) {
+      const mParts = moveInDateStr.split('/');
+      if (mParts.length === 3) {
+        const mm = Number(mParts[1]);
+        const my = Number(mParts[2]);
+        const md = Number(mParts[0]);
+        if (mm === m && my === y) {
+          isMoveInMonth = true;
+          moveInDay = md;
+        }
       }
+    }
+
+    if (targetDate) {
+      const parts = targetDate.split('/');
+      const d = Number(parts[0]) || 1;
+      daysStayed = daysInMonth - d + 1;
+    } else if (isMoveInMonth && moveInDay > 1) {
+      daysStayed = daysInMonth - moveInDay + 1;
+    } else {
+      daysStayed = daysInMonth;
     }
   } else {
     const now = new Date();
@@ -180,34 +215,37 @@ export function calculateExpectedAmount(
     daysStayed = daysInMonth;
   }
 
-  if (isNewContract && startDate) {
-    currentPrice = Math.round((basePrice / 30) * daysStayed);
-    let proratedExtra = Math.round((extraPersonFee / 30) * daysStayed);
-    let proratedInternet = Math.round((totalInternetSurcharge / 30) * daysStayed);
-    currentLivingFee = Math.round((livingFee / 30) * daysStayed);
-    extraPersonFee = proratedExtra;
-    totalInternetSurcharge = proratedInternet;
-  }
+  // Calculate prorated fees
+  const prorateRatio = daysStayed / daysInMonth;
+  
+  const res = {
+    basePrice: Math.round(basePrice * prorateRatio),
+    extraPersonFee: Math.round(extraPersonFee * prorateRatio),
+    internetSurcharge: Math.round(totalInternetSurcharge * prorateRatio),
+    livingFee: Math.round(livingFee * prorateRatio),
+    electricFee: Math.round(totalElectricFee * prorateRatio),
+    deposit: isNewContract ? deposit : 0, // Only include deposit if it's a new contract or requested
+  };
 
-  let total = 0;
-  if (type === 'Tiền phòng') total = currentPrice + totalInternetSurcharge + extraPersonFee;
-  if (type === 'Tiền nước') total = currentLivingFee;
-  if (type === 'Tiền phòng + Tiền nước') total = currentPrice + totalInternetSurcharge + extraPersonFee + currentLivingFee;
-  if (type === 'Tiền phòng + Tiền nước + Tiền cọc') total = currentPrice + totalInternetSurcharge + extraPersonFee + currentLivingFee + deposit;
-  if (type === 'Tiền cọc') total = deposit;
-
+  const total = res.basePrice + res.extraPersonFee + res.livingFee + res.internetSurcharge + res.electricFee + res.deposit;
   const roundedTotal = total > 0 ? Math.ceil(total / 10000) * 10000 : 0;
 
   return {
     total: roundedTotal,
     rawTotal: total,
-    basePrice: currentPrice,
-    extraPersonFee,
-    internetSurcharge: totalInternetSurcharge,
-    livingFee: currentLivingFee,
-    deposit: type.includes('cọc') ? deposit : 0,
+    basePrice: res.basePrice,
+    extraPersonFee: res.extraPersonFee,
+    internetSurcharge: res.internetSurcharge,
+    livingFee: res.livingFee,
+    electricFee: res.electricFee,
+    deposit: res.deposit,
     daysStayed,
     daysInMonth,
+    fullBasePrice: basePrice,
+    fullExtraFee: extraPersonFee,
+    fullLivingFee: livingFee,
+    fullSurcharge: totalInternetSurcharge,
+    fullElectric: totalElectricFee,
   };
 }
 
@@ -221,8 +259,8 @@ export function validatePaymentForm(
   if (!form.room_id) e.room_id = 'Vui lòng chọn phòng';
   if (!form.amount || form.amount <= 0) e.amount = 'Vui lòng nhập số tiền';
   if (!form.receiver.trim()) e.receiver = 'Vui lòng chọn người nhận';
-  if (form.payment_type === 'Khác' && !form.note.trim()) {
-    e.note = 'Bắt buộc nhập Ghi chú';
+  if (form.note.trim().length === 0 && form.amount > 0 && sumBreakdown(form) === 0) {
+    // Only require note if it's an "Other" type payment where breakdown is empty
   }
   if (needsNewContract) {
     if (!form.tenant.trim()) e.tenant = 'Vui lòng nhập tên khách thuê';
@@ -240,18 +278,38 @@ export function validatePaymentForm(
 
 /** Recalculate the total amount from breakdown fields */
 export function sumBreakdown(form: PaymentFormData): number {
-  return form.base_rent + form.extra_person_fee + form.living_fee + form.water_fee + form.deposit_fee - form.discount;
+  const fields = form.included_fields || [];
+  let sum = 0;
+  if (fields.includes('base_rent')) sum += (Number(form.base_rent) || 0);
+  if (fields.includes('extra_person_fee')) sum += (Number(form.extra_person_fee) || 0);
+  if (fields.includes('living_fee')) sum += (Number(form.living_fee) || 0);
+  if (fields.includes('water_fee')) sum += (Number(form.water_fee) || 0);
+  if (fields.includes('electric_fee')) sum += (Number(form.electric_fee) || 0);
+  if (fields.includes('deposit_fee')) sum += (Number(form.deposit_fee) || 0);
+  
+  return sum - (Number(form.discount) || 0);
 }
 
 /** Update form with new expected amounts from calculateExpectedAmount */
 export function applyExpectedToForm(form: PaymentFormData, exp: ExpectedAmountResult): PaymentFormData {
-  return {
+  const included = ['base_rent', 'extra_person_fee', 'living_fee', 'water_fee', 'electric_fee'];
+  if (exp.deposit > 0) included.push('deposit_fee');
+  
+  const newForm = {
     ...form,
-    amount: exp.total,
     base_rent: exp.basePrice,
     extra_person_fee: exp.extraPersonFee,
     living_fee: exp.internetSurcharge,
     water_fee: exp.livingFee,
+    electric_fee: exp.electricFee,
     deposit_fee: exp.deposit,
+    included_fields: included,
+    days_stayed: exp.daysStayed,
+    days_in_month: exp.daysInMonth,
+  };
+  
+  return {
+    ...newForm,
+    amount: sumBreakdown(newForm),
   };
 }

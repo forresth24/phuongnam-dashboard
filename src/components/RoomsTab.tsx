@@ -9,7 +9,7 @@ import { ConfirmDialog } from './ui/ConfirmDialog';
 import { getContractMonthRange } from '../lib/settings-helpers';
 import { PaymentFormModal } from './PaymentFormModal';
 import {
-  formatVND, todayStr, getCurrentMonthYear, isPaymentInCurrentMonth,
+  formatVND, firstDayOfMonthStr, getCurrentMonthYear, isPaymentInCurrentMonth,
   calculateExpectedAmount, makeEmptyPaymentForm,
   type PaymentFormData,
 } from '../lib/payment-utils';
@@ -87,14 +87,12 @@ export function RoomsTab({ config, data, loading, role, onRefresh, onNavigate }:
   // Quick Payment
   const openPayForRoom = (room: any) => {
     const contract = getActiveContract(room.id);
-    const defaultType = room.status === 'available' ? 'Tiền cọc' : 'Tiền phòng';
-    const startDate = todayStr();
-    const exp = calculateExpectedAmount(defaultType, room.id, data, getActiveContract, !contract, startDate);
+    const startDate = firstDayOfMonthStr();
+    const exp = calculateExpectedAmount(room.id, data, getActiveContract, !contract, startDate);
     const initForm: PaymentFormData = {
       ...makeEmptyPaymentForm(minMonths),
       room_id: room.id,
       contract_id: contract ? contract.id : '',
-      payment_type: defaultType,
       start_date: startDate,
       tenant: contract ? contract.tenant : '',
       phone: contract ? contract.phone : '',
@@ -105,14 +103,23 @@ export function RoomsTab({ config, data, loading, role, onRefresh, onNavigate }:
     setPayModalOpen(true);
   };
 
-  const applyFields = (exp: ReturnType<typeof calculateExpectedAmount>) => ({
-    amount: exp.total,
-    base_rent: exp.basePrice,
-    extra_person_fee: exp.extraPersonFee,
-    living_fee: exp.internetSurcharge,
-    water_fee: exp.livingFee,
-    deposit_fee: exp.deposit,
-  });
+  const applyFields = (exp: ReturnType<typeof calculateExpectedAmount>) => {
+    const included = ['base_rent', 'extra_person_fee', 'living_fee', 'water_fee', 'electric_fee'];
+    if (exp.deposit > 0) included.push('deposit_fee');
+
+    return {
+      amount: exp.total,
+      base_rent: exp.basePrice,
+      extra_person_fee: exp.extraPersonFee,
+      living_fee: exp.internetSurcharge,
+      water_fee: exp.livingFee,
+      electric_fee: exp.electricFee,
+      deposit_fee: exp.deposit,
+      included_fields: included,
+      days_stayed: exp.daysStayed,
+      days_in_month: exp.daysInMonth,
+    };
+  };
 
   const { month, year } = getCurrentMonthYear();
   const detailContract = detailRoom ? getActiveContract(detailRoom) : null;

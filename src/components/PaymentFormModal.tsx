@@ -8,7 +8,7 @@ import { ConfirmDialog } from './ui/ConfirmDialog';
 import { DatePickerInput } from './ui/DatePickerInput';
 import { getReceivers, autoPaymentStatus, getContractMonthRange } from '../lib/settings-helpers';
 import {
-  formatVND, todayStr,
+  formatVND, todayStr, firstDayOfMonthStr,
   calculateExpectedAmount, validatePaymentForm, sumBreakdown,
   makeEmptyPaymentForm,
   type PaymentFormData, type PaymentFieldError,
@@ -64,13 +64,12 @@ export function PaymentFormModal({
 
   const needsNewContract = !!(form.room_id && !getActiveContract(form.room_id));
 
-  const calcExpected = (type?: string, roomId?: string, startDate?: string, peopleCount?: number) => {
-    const t = type || form.payment_type;
+  const calcExpected = (roomId?: string, startDate?: string, peopleCount?: number) => {
     const r = roomId || form.room_id;
     const isNew = r ? !getActiveContract(r) : false;
     const sd = startDate || form.start_date;
     const pc = peopleCount ?? form.people_count;
-    return calculateExpectedAmount(t, r, data, getActiveContract, isNew, sd, pc);
+    return calculateExpectedAmount(r, data, getActiveContract, isNew, sd, pc);
   };
 
   const getExpected = () => calcExpected().total;
@@ -89,8 +88,8 @@ export function PaymentFormModal({
 
   const onRoomChange = (roomId: string) => {
     const contract = getActiveContract(roomId);
-    const startDate = todayStr();
-    const exp = calculateExpectedAmount(form.payment_type, roomId, data, getActiveContract, !contract, startDate);
+    const startDate = firstDayOfMonthStr();
+    const exp = calculateExpectedAmount(roomId, data, getActiveContract, !contract, startDate);
     setForm(prev => ({
       ...prev,
       room_id: roomId, contract_id: contract ? contract.id : '',
@@ -104,45 +103,64 @@ export function PaymentFormModal({
     if (errors.room_id) setErrors(prev => ({ ...prev, room_id: undefined }));
   };
 
-  const applyExpectedFields = (exp: ReturnType<typeof calculateExpectedAmount>) => ({
-    amount: exp.total,
-    base_rent: exp.basePrice,
-    extra_person_fee: exp.extraPersonFee,
-    living_fee: exp.internetSurcharge,
-    water_fee: exp.livingFee,
-    deposit_fee: exp.deposit,
-  });
-
-  const handleTypeChange = (type: string) => {
-    const exp = calcExpected(type);
-    setForm(prev => ({ ...prev, payment_type: type, ...applyExpectedFields(exp) }));
+  const applyExpectedFields = (exp: ReturnType<typeof calculateExpectedAmount>) => {
+    const included = ['base_rent', 'extra_person_fee', 'living_fee', 'water_fee', 'electric_fee'];
+    if (exp.deposit > 0) included.push('deposit_fee');
+    
+    const partialForm: any = {
+      base_rent: exp.basePrice,
+      extra_person_fee: exp.extraPersonFee,
+      living_fee: exp.internetSurcharge,
+      water_fee: exp.livingFee,
+      electric_fee: exp.electricFee,
+      deposit_fee: exp.deposit,
+      included_fields: included,
+      days_stayed: exp.daysStayed,
+      days_in_month: exp.daysInMonth,
+    };
+    partialForm.amount = sumBreakdown(partialForm as any);
+    return partialForm;
   };
 
   const handleAmountChange = (val: number) => {
-    const expected = getExpected();
-    if (val !== expected && form.payment_type !== 'Khác') {
-      setForm(prev => ({ ...prev, amount: val, payment_type: 'Khác' }));
-    } else {
-      F('amount', val);
-    }
+    F('amount', val);
   };
 
   const handleStartDateChange = (val: string) => {
-    const exp = calcExpected(undefined, undefined, val);
+    const exp = calcExpected(undefined, val);
     setForm(prev => ({ ...prev, start_date: val, ...applyExpectedFields(exp) }));
   };
 
   const handlePeopleCountChange = (val: number) => {
-    const exp = calcExpected(undefined, undefined, undefined, val);
+    const exp = calcExpected(undefined, undefined, val);
     setForm(prev => ({ ...prev, people_count: val, ...applyExpectedFields(exp) }));
   };
 
-  const handleBreakdownChange = (field: string, val: number) => {
-    setForm(prev => {
-      const updated = { ...prev, [field]: val };
-      updated.amount = sumBreakdown(updated);
-      return updated;
-    });
+  const handleDaysChange = (days: number) => {
+    const exp = calcExpected();
+    const ratio = days / exp.daysInMonth;
+    const newForm = {
+      ...form,
+      days_stayed: days,
+      base_rent: Math.round(exp.fullBasePrice * ratio),
+      extra_person_fee: Math.round(exp.fullExtraFee * ratio),
+      living_fee: Math.round(exp.fullSurcharge * ratio),
+      water_fee: Math.round(exp.fullLivingFee * ratio),
+      electric_fee: Math.round(exp.fullElectric * ratio),
+    };
+    setForm({ ...newForm, amount: sumBreakdown(newForm) });
+  };
+
+  const handleBreakdownChange = (key: string, val: number) => {
+    const newForm = { ...form, [key]: val };
+    setForm({ ...newForm, amount: sumBreakdown(newForm) });
+  };
+
+  const toggleField = (key: string) => {
+    const current = form.included_fields || [];
+    const next = current.includes(key) ? current.filter(k => k !== key) : [...current, key];
+    const newForm = { ...form, included_fields: next };
+    setForm({ ...newForm, amount: sumBreakdown(newForm) });
   };
 
   // ─── Submit ─────────────────────────────────────────────
@@ -166,35 +184,38 @@ export function PaymentFormModal({
       if (!contractId) { setSaveError('Không tìm thấy hợp đồng'); setSaving(false); return; }
 
       const expected = getExpected();
-      const isPartial = form.payment_type === 'Tiền phòng' && form.amount < expected;
+      const isPartial = form.amount < expected;
       const expResult = calcExpected();
+
+      const commonPayload = {
+        amount: form.amount, date: form.date || todayStr(),
+        note: form.note, receiver: form.receiver, method: form.method,
+        status: form.status, is_partial: isPartial,
+        total_amount_calculated: form.amount,
+        discount_applied: form.discount,
+        base_rent: form.base_rent,
+        extra_fee_total: form.extra_person_fee,
+        surcharge_total: form.living_fee,
+        water_total: form.water_fee,
+        electric_total: form.electric_fee,
+        deposit_fee: form.deposit_fee,
+        days_in_month: expResult.daysStayed,
+        payment_type: 'Thu tiền tháng',
+      };
 
       if (editItem) {
         let finalNote = form.note;
-        if (form.amount !== editItem.amount || form.payment_type !== editItem.payment_type) {
+        if (form.amount !== editItem.amount) {
           finalNote += ` [Sửa ${todayStr()}]`;
         }
         await API.updatePayment(config, editItem.id, {
-          payment_type: form.payment_type, amount: form.amount,
-          date: form.date, receiver: form.receiver, method: form.method,
-          status: form.status, is_partial: isPartial, note: finalNote.trim(),
-          total_amount_calculated: form.amount,
-          discount_applied: form.discount,
-          electric_total: 0, water_total: form.water_fee,
-          surcharge_total: form.living_fee, extra_fee_total: form.extra_person_fee,
-          days_in_month: expResult.daysStayed,
+          ...commonPayload,
+          note: finalNote.trim(),
         });
       } else {
         await API.createPayment(config, {
-          contract_id: contractId, payment_type: form.payment_type,
-          amount: form.amount, date: form.date || todayStr(),
-          note: form.note, receiver: form.receiver, method: form.method,
-          status: form.status, is_partial: isPartial,
-          total_amount_calculated: form.amount,
-          discount_applied: form.discount,
-          electric_total: 0, water_total: form.water_fee,
-          surcharge_total: form.living_fee, extra_fee_total: form.extra_person_fee,
-          days_in_month: expResult.daysStayed,
+          contract_id: contractId,
+          ...commonPayload,
         });
       }
       onClose();
@@ -210,7 +231,7 @@ export function PaymentFormModal({
     if (Object.keys(e).length > 0) return;
 
     const expected = getExpected();
-    if ((form.payment_type === 'Tiền phòng' || form.payment_type.includes('cọc')) && form.amount < expected && expected > 0) {
+    if (form.amount < expected && expected > 0) {
       setPartialConfirm(true);
       return;
     }
@@ -308,15 +329,6 @@ export function PaymentFormModal({
                   </>
                 )}
                 <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">Ngày vào ở</label>
-                  <DatePickerInput value={form.start_date || ''} onChange={handleStartDateChange} />
-                  {(form.payment_type.includes('Tiền phòng') || form.payment_type.includes('Tiền nước')) && expResult && (
-                    <p className="text-[11px] text-slate-500 mt-1">
-                      Số ngày ở: <b>{expResult.daysStayed}</b> / {expResult.daysInMonth} ngày
-                    </p>
-                  )}
-                </div>
-                <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">Thời hạn HĐ (tháng)</label>
                   <input type="number" min={minMonths} max={maxMonths} value={form.duration}
                     onChange={e => F('duration', Math.max(minMonths, Math.min(maxMonths, Number(e.target.value) || minMonths)))}
@@ -334,6 +346,36 @@ export function PaymentFormModal({
             </div>
           )}
 
+          {/* Days Proration - Now for everyone */}
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+            <div className="flex items-end gap-3">
+              <div className="flex-1">
+                <label className="block text-xs font-medium text-slate-600 mb-1">Số ngày tính phí (Prorate)</label>
+                <div className="flex items-center gap-2">
+                  {form.days_stayed === form.days_in_month ? (
+                    <div className="w-20 bg-white border border-indigo-200 text-indigo-700 font-bold rounded-xl px-3 py-2 text-sm">1 tháng</div>
+                  ) : (
+                    <input type="number" value={form.days_stayed} onChange={e => handleDaysChange(Number(e.target.value) || 0)}
+                      className="w-20 bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
+                  )}
+                  <span className="text-slate-500 font-medium text-sm">/ {form.days_in_month} ngày</span>
+                  {form.days_stayed === form.days_in_month && (
+                    <button onClick={() => handleDaysChange(form.days_in_month - 1)} className="text-[10px] text-indigo-600 font-medium hover:underline">Sửa số ngày</button>
+                  )}
+                </div>
+              </div>
+              <div className="flex-1">
+                <label className="block text-xs font-medium text-slate-600 mb-1">Tính từ ngày</label>
+                <DatePickerInput value={form.start_date || ''} onChange={handleStartDateChange} />
+              </div>
+            </div>
+            {expResult && expResult.daysStayed < expResult.daysInMonth && (
+              <p className="text-[11px] text-indigo-600 bg-white/50 px-2 py-1 rounded-lg border border-indigo-100 italic">
+                Hệ thống đang tính tỉ lệ {expResult.daysStayed}/{expResult.daysInMonth} ngày.
+              </p>
+            )}
+          </div>
+
           {/* Payment details grid */}
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -342,34 +384,30 @@ export function PaymentFormModal({
                 onChange={e => handlePeopleCountChange(Number(e.target.value) || 1)}
                 className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
             </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Loại giao dịch</label>
-              <select value={form.payment_type} onChange={e => handleTypeChange(e.target.value)}
-                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none">
-                <option value="Tiền phòng">Tiền phòng</option>
-                <option value="Tiền phòng + Tiền nước">Tiền phòng + Tiền nước</option>
-                <option value="Tiền phòng + Tiền nước + Tiền cọc">Tiền phòng + Tiền nước + Tiền cọc</option>
-                <option value="Tiền cọc">Tiền cọc</option>
-                <option value="Tiền nước">Tiền nước</option>
-                <option value="Khác">Khác</option>
-              </select>
+            <div className="flex items-end pb-1">
+              <p className="text-[11px] text-slate-400 italic">Chọn các khoản thu bên dưới để tự động tính tổng tiền.</p>
             </div>
 
             {/* Breakdown section */}
             <div className="col-span-2 bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
-              <p className="font-bold text-slate-700 text-sm border-b border-slate-200 pb-2 mb-2">Phân bổ số tiền (Admin kiểm tra)</p>
+              <p className="font-bold text-slate-700 text-sm border-b border-slate-200 pb-2 mb-2">Phân bổ số tiền</p>
               <div className="grid grid-cols-2 gap-3">
                 {[
                   { key: 'base_rent', label: 'Tiền phòng' },
                   { key: 'extra_person_fee', label: 'Phụ thu quá người' },
-                  { key: 'living_fee', label: 'Phí sinh hoạt (Rác, Internet...)' },
-                  { key: 'water_fee', label: 'Tiền nước' },
+                  { key: 'living_fee', label: 'Phí dịch vụ' },
+                  { key: 'water_fee', label: 'Nước sinh hoạt' },
+                  { key: 'electric_fee', label: 'Điện sinh hoạt' },
                   { key: 'deposit_fee', label: 'Tiền cọc' },
                 ].map(({ key, label }) => (
                   <div key={key}>
-                    <label className="block text-[10px] uppercase tracking-wider font-bold text-slate-400 mb-1">{label}</label>
+                    <div className="flex items-center gap-2 mb-1">
+                      <input type="checkbox" checked={form.included_fields?.includes(key)} onChange={() => toggleField(key)}
+                        className="w-3.5 h-3.5 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500" />
+                      <label className="block text-[10px] uppercase tracking-wider font-bold text-slate-400">{label}</label>
+                    </div>
                     <input type="number" value={(form as any)[key]} onChange={e => handleBreakdownChange(key, Number(e.target.value))}
-                      className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-sm" />
+                      className={`w-full bg-white border rounded-lg px-2 py-1.5 text-sm transition-opacity ${form.included_fields?.includes(key) ? 'border-slate-200' : 'border-slate-100 opacity-40'}`} />
                   </div>
                 ))}
                 <div>
@@ -439,10 +477,9 @@ export function PaymentFormModal({
 
           {/* Note */}
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Ghi chú{form.payment_type === 'Khác' && <RequiredStar />}</label>
-            <textarea value={form.note} onChange={e => F('note', e.target.value)} rows={2}
-              className={`w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none ${errors.note ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`} />
-            <FieldErr msg={errors.note} />
+            <label className="block text-xs font-medium text-slate-600 mb-1">Ghi chú</label>
+            <textarea value={form.note} onChange={e => F('note', e.target.value)} rows={2} placeholder="Tháng 4/2026..."
+              className={`w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none`} />
           </div>
 
           {saveError && <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-sm text-rose-700">⚠️ {saveError}</div>}

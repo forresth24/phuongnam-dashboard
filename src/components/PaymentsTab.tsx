@@ -9,7 +9,7 @@ import { ConfirmDialog } from './ui/ConfirmDialog';
 import { getReceivers, autoPaymentStatus } from '../lib/settings-helpers';
 import { PaymentFormModal } from './PaymentFormModal';
 import {
-  formatVND, todayStr, makeEmptyPaymentForm,
+  formatVND, firstDayOfMonthStr, makeEmptyPaymentForm,
   type PaymentFormData,
 } from '../lib/payment-utils';
 
@@ -100,7 +100,6 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
     setInitialForm({
       room_id: contract ? contract.room_id : '',
       contract_id: p.contract_id,
-      payment_type: p.payment_type || 'Tiền phòng',
       amount: p.amount,
       date: p.date,
       receiver: p.receiver || 'Chưa nhận',
@@ -116,14 +115,18 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
       address: '',
       dob: '',
       duration: 12,
-      start_date: todayStr(),
+      start_date: firstDayOfMonthStr(),
       people_count: contract ? Number(contract.people_count) || 1 : 1,
       discount: Number(p.discount_applied) || 0,
       base_rent: Number(p.base_rent) || (Number(p.amount) - (Number(p.water_total)||0) - (Number(p.surcharge_total)||0) - (Number(p.extra_fee_total)||0) + (Number(p.discount_applied)||0)),
       extra_person_fee: Number(p.extra_fee_total) || 0,
       living_fee: Number(p.surcharge_total) || 0,
       water_fee: Number(p.water_total) || 0,
-      deposit_fee: 0,
+      electric_fee: Number(p.electric_total) || 0,
+      deposit_fee: Number(p.deposit_fee) || 0,
+      included_fields: ['base_rent', 'extra_person_fee', 'living_fee', 'water_fee', 'electric_fee'],
+      days_stayed: Number(p.days_in_month) || 30,
+      days_in_month: 30,
     });
     setModalOpen(true);
   };
