@@ -200,7 +200,9 @@ export function PaymentFormModal({
         electric_total: form.electric_fee,
         deposit_fee: form.deposit_fee,
         days_in_month: expResult.daysStayed,
-        payment_type: 'Thu tiền tháng',
+        payment_type: (form.included_fields?.length === 1 && form.included_fields.includes('deposit_fee')) 
+          ? 'Tiền cọc' 
+          : 'Thu tiền tháng',
       };
 
       if (editItem) {

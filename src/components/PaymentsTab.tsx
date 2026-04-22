@@ -97,6 +97,18 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
   const openEdit = (p: any) => {
     const contract = data.contracts_all.find((c: any) => c.id === p.contract_id);
     setEditItem(p);
+    // Map sheet headers (Vietnamese) to form fields
+    const baseRent = Number(p.base_rent) || Number(p['tiền phòng']) || 0;
+    const extraFee = Number(p.extra_fee_total) || Number(p['phụ thu quá người']) || 0;
+    const livingFee = Number(p.surcharge_total) || Number(p['phí dịch vụ']) || 0;
+    const waterFee = Number(p.water_total) || Number(p['nước sinh hoạt']) || 0;
+    const electricFee = Number(p.electric_total) || Number(p['điện sinh hoạt']) || 0;
+    const depositFee = Number(p.deposit_fee) || Number(p['tiền cọc']) || 0;
+    const discount = Number(p.discount_applied) || Number(p['chiết khấu']) || 0;
+
+    const included = ['base_rent', 'extra_person_fee', 'living_fee', 'water_fee', 'electric_fee'];
+    if (depositFee > 0) included.push('deposit_fee');
+
     setInitialForm({
       room_id: contract ? contract.room_id : '',
       contract_id: p.contract_id,
@@ -117,14 +129,14 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
       duration: 12,
       start_date: firstDayOfMonthStr(),
       people_count: contract ? Number(contract.people_count) || 1 : 1,
-      discount: Number(p.discount_applied) || 0,
-      base_rent: Number(p.base_rent) || (Number(p.amount) - (Number(p.water_total)||0) - (Number(p.surcharge_total)||0) - (Number(p.extra_fee_total)||0) + (Number(p.discount_applied)||0)),
-      extra_person_fee: Number(p.extra_fee_total) || 0,
-      living_fee: Number(p.surcharge_total) || 0,
-      water_fee: Number(p.water_total) || 0,
-      electric_fee: Number(p.electric_total) || 0,
-      deposit_fee: Number(p.deposit_fee) || 0,
-      included_fields: ['base_rent', 'extra_person_fee', 'living_fee', 'water_fee', 'electric_fee'],
+      discount: discount,
+      base_rent: baseRent,
+      extra_person_fee: extraFee,
+      living_fee: livingFee,
+      water_fee: waterFee,
+      electric_fee: electricFee,
+      deposit_fee: depositFee,
+      included_fields: included,
       days_stayed: Number(p.days_in_month) || 30,
       days_in_month: 30,
     });
