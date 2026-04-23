@@ -156,6 +156,19 @@ export function PaymentFormModal({
     setForm({ ...newForm, amount: sumBreakdown(newForm) });
   };
 
+  const toggleMonthlyGroup = () => {
+    const group = ['base_rent', 'water_fee', 'living_fee', 'electric_fee'];
+    const allChecked = group.every(k => form.included_fields?.includes(k));
+    let next;
+    if (allChecked) {
+      next = form.included_fields?.filter(k => !group.includes(k)) || [];
+    } else {
+      next = Array.from(new Set([...(form.included_fields || []), ...group]));
+    }
+    const newForm = { ...form, included_fields: next };
+    setForm({ ...newForm, amount: sumBreakdown(newForm) });
+  };
+
   const toggleField = (key: string) => {
     const current = form.included_fields || [];
     const next = current.includes(key) ? current.filter(k => k !== key) : [...current, key];
@@ -348,8 +361,8 @@ export function PaymentFormModal({
             </div>
           )}
 
-          {/* Days Proration - Now for everyone */}
-          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+          {/* Days Proration & Main Monthly Fees */}
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-4">
             <div className="flex items-end gap-3">
               <div className="flex-1">
                 <label className="block text-xs font-medium text-slate-600 mb-1">Số ngày tính phí (Prorate)</label>
@@ -371,66 +384,99 @@ export function PaymentFormModal({
                 <DatePickerInput value={form.start_date || ''} onChange={handleStartDateChange} />
               </div>
             </div>
+
             {expResult && expResult.daysStayed < expResult.daysInMonth && (
               <p className="text-[11px] text-indigo-600 bg-white/50 px-2 py-1 rounded-lg border border-indigo-100 italic">
                 Hệ thống đang tính tỉ lệ {expResult.daysStayed}/{expResult.daysInMonth} ngày.
               </p>
             )}
-          </div>
 
-          {/* Payment details grid */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Số người ở</label>
-              <input type="number" min={1} value={form.people_count}
-                onChange={e => handlePeopleCountChange(Number(e.target.value) || 1)}
-                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
-            </div>
-            <div className="flex items-end pb-1">
-              <p className="text-[11px] text-slate-400 italic">Chọn các khoản thu bên dưới để tự động tính tổng tiền.</p>
-            </div>
-
-            {/* Breakdown section */}
-            <div className="col-span-2 bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
-              <p className="font-bold text-slate-700 text-sm border-b border-slate-200 pb-2 mb-2">Phân bổ số tiền</p>
-              <div className="grid grid-cols-2 gap-3">
+            <div className="border-t border-slate-200 pt-3">
+              <div className="flex items-center gap-2 mb-3">
+                <input type="checkbox" 
+                  checked={['base_rent', 'water_fee', 'living_fee', 'electric_fee'].every(k => form.included_fields?.includes(k))}
+                  onChange={toggleMonthlyGroup}
+                  className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500" />
+                <label className="text-sm font-bold text-slate-700">Các khoản phí cố định (Phòng + Nước + Dịch vụ + Điện)</label>
+              </div>
+              
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {[
                   { key: 'base_rent', label: 'Tiền phòng' },
-                  { key: 'extra_person_fee', label: 'Phụ thu quá người' },
-                  { key: 'living_fee', label: 'Phí dịch vụ' },
-                  { key: 'water_fee', label: 'Nước sinh hoạt' },
-                  { key: 'electric_fee', label: 'Điện sinh hoạt' },
-                  { key: 'deposit_fee', label: 'Tiền cọc' },
+                  { key: 'water_fee', label: 'Nước' },
+                  { key: 'living_fee', label: 'Dịch vụ' },
+                  { key: 'electric_fee', label: 'Điện' },
                 ].map(({ key, label }) => (
-                  <div key={key}>
-                    <div className="flex items-center gap-2 mb-1">
-                      <input type="checkbox" checked={form.included_fields?.includes(key)} onChange={() => toggleField(key)}
-                        className="w-3.5 h-3.5 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500" />
-                      <label className="block text-[10px] uppercase tracking-wider font-bold text-slate-400">{label}</label>
-                    </div>
+                  <div key={key} className={!form.included_fields?.includes(key) ? 'opacity-40' : ''}>
+                    <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">{label}</label>
                     <input type="number" value={(form as any)[key]} onChange={e => handleBreakdownChange(key, Number(e.target.value))}
-                      className={`w-full bg-white border rounded-lg px-2 py-1.5 text-sm transition-opacity ${form.included_fields?.includes(key) ? 'border-slate-200' : 'border-slate-100 opacity-40'}`} />
+                      className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-sm focus:ring-1 focus:ring-indigo-400 focus:outline-none" />
                   </div>
                 ))}
-                <div>
-                  <label className="block text-[10px] uppercase tracking-wider font-bold text-slate-400 mb-1 text-rose-500">Chiết khấu / Giảm giá</label>
-                  <input type="number" value={form.discount} onChange={e => handleBreakdownChange('discount', Number(e.target.value))}
-                    className="w-full bg-white border border-rose-200 rounded-lg px-2 py-1.5 text-sm text-rose-600" />
-                </div>
-              </div>
-              <div className="flex justify-between items-center pt-2 border-t border-slate-200 mt-2">
-                <span className="text-sm font-bold text-slate-900">Tổng cộng (Định mức):</span>
-                <span className="text-sm font-bold text-indigo-600">{formatVND(sumBreakdown(form))}</span>
               </div>
             </div>
+          </div>
 
-            {/* Amount */}
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Số tiền thực thu<RequiredStar /></label>
-              <input type="number" value={form.amount} onChange={e => handleAmountChange(Number(e.target.value))}
-                className={`w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none ${errors.amount ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`} />
-              {form.amount > 0 && <p className="text-[11px] font-medium text-indigo-600 mt-1">{formatVND(form.amount)}</p>}
-              <FieldErr msg={errors.amount} />
+          {/* Section 2: Contract Info & Surcharges */}
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+            <p className="font-bold text-slate-700 text-sm border-b border-slate-200 pb-2 mb-2">Thông tin hợp đồng & Phụ phí</p>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Số người ở</label>
+                <input type="number" min={1} value={form.people_count}
+                  onChange={e => handlePeopleCountChange(Number(e.target.value) || 1)}
+                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <input type="checkbox" checked={form.included_fields?.includes('extra_person_fee')} onChange={() => toggleField('extra_person_fee')}
+                    className="w-3.5 h-3.5 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500" />
+                  <label className="block text-[10px] uppercase font-bold text-slate-400">Phụ thu quá người</label>
+                </div>
+                <input type="number" value={form.extra_person_fee} onChange={e => handleBreakdownChange('extra_person_fee', Number(e.target.value))}
+                  className={`w-full bg-white border rounded-lg px-2 py-1.5 text-sm ${form.included_fields?.includes('extra_person_fee') ? 'border-slate-200' : 'border-slate-100 opacity-40'}`} />
+              </div>
+              <div className="col-span-2 grid grid-cols-2 gap-4 pt-1">
+                <div>
+                  <label className="block text-[10px] uppercase font-bold text-rose-500 mb-1">Chiết khấu / Giảm giá</label>
+                  <input type="number" value={form.discount} onChange={e => handleBreakdownChange('discount', Number(e.target.value))}
+                    className="w-full bg-white border border-rose-200 rounded-lg px-2 py-1.5 text-sm text-rose-600 focus:ring-1 focus:ring-rose-400 focus:outline-none" />
+                </div>
+                <div className="flex items-end pb-1">
+                  <p className="text-[10px] text-slate-400 italic leading-tight">Mục này luôn được trừ vào tổng tiền nếu &gt; 0.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 3: Security Deposit */}
+          <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <input type="checkbox" checked={form.included_fields?.includes('deposit_fee')} onChange={() => toggleField('deposit_fee')}
+                  className="w-4 h-4 text-amber-600 border-amber-300 rounded focus:ring-amber-500" />
+                <label className="text-sm font-bold text-amber-800 uppercase tracking-wide">Tiền cọc (Thế chân)</label>
+              </div>
+              <input type="number" value={form.deposit_fee} onChange={e => handleBreakdownChange('deposit_fee', Number(e.target.value))}
+                className={`w-32 bg-white border rounded-xl px-3 py-2 text-sm font-bold text-right ${form.included_fields?.includes('deposit_fee') ? 'border-amber-200 text-amber-700' : 'border-amber-50 opacity-40'}`} />
+            </div>
+          </div>
+
+          {/* Payment execution details */}
+          <div className="grid grid-cols-2 gap-4">
+            {/* Amount and Total */}
+            <div className="col-span-2 bg-indigo-50 border border-indigo-100 rounded-2xl p-4 flex justify-between items-center mb-1">
+              <div>
+                <label className="block text-xs font-medium text-indigo-900 mb-1 uppercase tracking-wider opacity-70">Tổng cộng định mức</label>
+                <div className="text-2xl font-black text-indigo-700 leading-none">{formatVND(sumBreakdown(form))}</div>
+              </div>
+              <div className="w-40 text-right">
+                <label className="block text-xs font-medium text-slate-600 mb-1">Số tiền thực thu<RequiredStar /></label>
+                <input type="number" value={form.amount} onChange={e => handleAmountChange(Number(e.target.value))}
+                  className={`w-full bg-white border rounded-xl px-3 py-2 text-sm font-bold text-indigo-700 focus:ring-2 focus:ring-indigo-400 focus:outline-none ${errors.amount ? 'border-rose-400 bg-rose-50/30' : 'border-indigo-200'}`} />
+                {form.amount > 0 && <p className="text-[10px] font-bold text-indigo-500 mt-1">{formatVND(form.amount)}</p>}
+                <FieldErr msg={errors.amount} />
+              </div>
             </div>
 
             {/* Date */}
@@ -444,10 +490,10 @@ export function PaymentFormModal({
                     <div className="flex-1"><DatePickerInput value={form.date} onChange={v => F('date', v)} /></div>
                   )}
                   {form.date === todayStr() && (
-                    <button onClick={() => F('date', '')} className="text-[11px] text-indigo-600 font-medium px-2 py-1 bg-indigo-50 rounded-lg hover:bg-indigo-100 whitespace-nowrap">Chọn ngày khác</button>
+                    <button onClick={() => F('date', '')} className="text-[11px] text-indigo-600 font-medium px-2 py-1 bg-indigo-50 rounded-lg hover:bg-indigo-100 whitespace-nowrap">Chọn</button>
                   )}
                   {form.date !== todayStr() && (
-                    <button onClick={() => F('date', todayStr())} className="text-[11px] text-indigo-600 font-medium px-2 py-1 bg-indigo-50 rounded-lg hover:bg-indigo-100 whitespace-nowrap">Hôm nay</button>
+                    <button onClick={() => F('date', todayStr())} className="text-[11px] text-indigo-600 font-medium px-2 py-1 bg-indigo-50 rounded-lg hover:bg-indigo-100 whitespace-nowrap">Nay</button>
                   )}
                 </div>
               </div>
@@ -466,7 +512,7 @@ export function PaymentFormModal({
 
             {/* Method */}
             {form.receiver !== 'Chưa nhận' && (
-              <div>
+              <div className="col-span-2">
                 <label className="block text-xs font-medium text-slate-600 mb-1">Hình thức</label>
                 <select value={form.method} onChange={e => F('method', e.target.value)}
                   className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none">

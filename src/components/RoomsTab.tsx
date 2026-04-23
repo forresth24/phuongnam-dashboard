@@ -89,6 +89,8 @@ export function RoomsTab({ config, data, loading, role, onRefresh, onNavigate }:
     const contract = getActiveContract(room.id);
     const startDate = firstDayOfMonthStr();
     const exp = calculateExpectedAmount(room.id, data, getActiveContract, !contract, startDate);
+    const isDepositOnly = room.status === 'available';
+    
     const initForm: PaymentFormData = {
       ...makeEmptyPaymentForm(minMonths),
       room_id: room.id,
@@ -97,18 +99,20 @@ export function RoomsTab({ config, data, loading, role, onRefresh, onNavigate }:
       tenant: contract ? contract.tenant : '',
       phone: contract ? contract.phone : '',
       people_count: contract ? Number(contract.people_count) || 1 : 1,
-      ...applyFields(exp),
+      ...applyFields(exp, isDepositOnly),
     };
     setPayInitialForm(initForm);
     setPayModalOpen(true);
   };
 
-  const applyFields = (exp: ReturnType<typeof calculateExpectedAmount>) => {
-    const included = ['base_rent', 'extra_person_fee', 'living_fee', 'water_fee', 'electric_fee'];
-    if (exp.deposit > 0) included.push('deposit_fee');
+  const applyFields = (exp: ReturnType<typeof calculateExpectedAmount>, isDepositOnly: boolean) => {
+    let included = ['base_rent', 'extra_person_fee', 'living_fee', 'water_fee', 'electric_fee'];
+    if (isDepositOnly) {
+      included = ['deposit_fee'];
+    }
 
     return {
-      amount: exp.total,
+      amount: isDepositOnly ? exp.deposit : exp.total - exp.deposit,
       base_rent: exp.basePrice,
       extra_person_fee: exp.extraPersonFee,
       living_fee: exp.internetSurcharge,
