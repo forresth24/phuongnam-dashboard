@@ -179,7 +179,7 @@ export function calculateExpectedAmount(
     discount = Number(contract.discount);
   }
 
-  // Tiền cọc = Giá phòng + Phụ thu quá người
+  // Tiền cọc = Giá phòng + Phụ thu quá người - Giảm giá
   const deposit = basePrice + extraPersonFee - discount;
 
   let daysStayed = 0;
@@ -288,7 +288,7 @@ export function calculateExpectedAmount(
     daysStayed,
     daysInMonth,
     oldElectric: oldElectric,
-    fullBasePrice: basePrice,
+    fullBasePrice: deposit,
     fullExtraFee: extraPersonFee,
     fullLivingFee: livingFee,
     fullSurcharge: totalInternetSurcharge,
