@@ -146,7 +146,8 @@ export function PaymentFormModal({
       ...form,
       days_stayed: days,
       base_rent: roundUp10k(exp.fullBasePrice * ratio),
-      extra_person_fee: roundUp10k(exp.fullExtraFee * ratio),
+      // extra_person_fee: roundUp10k(exp.fullExtraFee * ratio),
+      extra_person_fee: roundUp10k(exp.fullExtraFee),
       living_fee: roundUp10k(exp.fullSurcharge * ratio),
       water_fee: roundUp10k(exp.fullLivingFee * ratio),
       electric_fee: roundUp10k(exp.fullElectric * ratio),
@@ -379,6 +380,54 @@ export function PaymentFormModal({
             </div>
           )}
 
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-4">
+            <div className="flex items-end gap-3">
+              {!needsNewContract && (
+                <button 
+                  onClick={() => setIsContractEditable(!isContractEditable)}
+                  className={`text-[10px] px-2 py-0.5 rounded-md font-bold uppercase transition-colors ${isContractEditable ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-500'}`}
+                >
+                  {isContractEditable ? 'Đang sửa' : 'Sửa nhanh'}
+                </button>
+              )}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                {/* Additional fields moved into the same grid */}
+                <div className={(!needsNewContract && !isContractEditable) ? 'opacity-70' : ''}>
+                  <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Số người ở</label>
+                  <input id="input-people-count" type="number" min={1} value={form.people_count}
+                    inputMode="numeric"
+                    disabled={!needsNewContract && !isContractEditable}
+                    onChange={e => handlePeopleCountChange(Number(e.target.value) || 1)}
+                    className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none disabled:bg-slate-50" />
+                </div>
+
+                <div className={`${(!needsNewContract && !isContractEditable) ? 'opacity-70' : ''} ${!form.included_fields?.includes('extra_person_fee') ? 'opacity-40' : ''}`}>
+                  <div className="flex items-center gap-1 mb-1">
+                    <input type="checkbox" checked={form.included_fields?.includes('extra_person_fee')} 
+                      disabled={!needsNewContract && !isContractEditable}
+                      onChange={() => toggleField('extra_person_fee')}
+                      className="w-3 h-3 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 disabled:opacity-50" />
+                    <label className="block text-[10px] uppercase font-bold text-slate-400">Phụ thu</label>
+                  </div>
+                  <input id="input-breakdown-extra-person" type="number" value={form.extra_person_fee} 
+                    disabled={!needsNewContract && !isContractEditable}
+                    onChange={e => handleBreakdownChange('extra_person_fee', Number(e.target.value))}
+                    step="1000" inputMode="numeric"
+                    className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-sm disabled:bg-slate-50" />
+                </div>
+
+                <div className={(!needsNewContract && !isContractEditable) ? 'opacity-70' : ''}>
+                  <label className="block text-[10px] uppercase font-bold text-rose-500 mb-1">Chiết khấu</label>
+                  <input id="input-breakdown-discount" type="number" value={form.discount} 
+                    disabled={!needsNewContract && !isContractEditable}
+                    onChange={e => handleBreakdownChange('discount', Number(e.target.value))}
+                    step="1000" inputMode="numeric"
+                    className="w-full bg-white border border-rose-200 rounded-lg px-2 py-1 text-sm text-rose-600 focus:ring-1 focus:ring-rose-400 focus:outline-none disabled:bg-slate-50" />
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Days Proration & Main Monthly Fees */}
           <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-4">
             <div className="flex items-end gap-3">
@@ -419,16 +468,7 @@ export function PaymentFormModal({
                     className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500" />
                   <label className="text-sm font-bold text-slate-700">Các khoản phí cố định (Phòng + Nước + Dịch vụ + Điện)</label>
                 </div>
-                {!needsNewContract && (
-                  <button 
-                    onClick={() => setIsContractEditable(!isContractEditable)}
-                    className={`text-[10px] px-2 py-0.5 rounded-md font-bold uppercase transition-colors ${isContractEditable ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-500'}`}
-                  >
-                    {isContractEditable ? 'Đang sửa' : 'Sửa nhanh'}
-                  </button>
-                )}
               </div>
-              
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
                 {[
                   { key: 'base_rent', label: 'Tiền phòng' },
@@ -457,40 +497,6 @@ export function PaymentFormModal({
                     )}
                   </div>
                 ))}
-
-                {/* Additional fields moved into the same grid */}
-                <div className={(!needsNewContract && !isContractEditable) ? 'opacity-70' : ''}>
-                  <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Số người ở</label>
-                  <input id="input-people-count" type="number" min={1} value={form.people_count}
-                    inputMode="numeric"
-                    disabled={!needsNewContract && !isContractEditable}
-                    onChange={e => handlePeopleCountChange(Number(e.target.value) || 1)}
-                    className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none disabled:bg-slate-50" />
-                </div>
-
-                <div className={`${(!needsNewContract && !isContractEditable) ? 'opacity-70' : ''} ${!form.included_fields?.includes('extra_person_fee') ? 'opacity-40' : ''}`}>
-                  <div className="flex items-center gap-1 mb-1">
-                    <input type="checkbox" checked={form.included_fields?.includes('extra_person_fee')} 
-                      disabled={!needsNewContract && !isContractEditable}
-                      onChange={() => toggleField('extra_person_fee')}
-                      className="w-3 h-3 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 disabled:opacity-50" />
-                    <label className="block text-[10px] uppercase font-bold text-slate-400">Phụ thu</label>
-                  </div>
-                  <input id="input-breakdown-extra-person" type="number" value={form.extra_person_fee} 
-                    disabled={!needsNewContract && !isContractEditable}
-                    onChange={e => handleBreakdownChange('extra_person_fee', Number(e.target.value))}
-                    step="1000" inputMode="numeric"
-                    className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-sm disabled:bg-slate-50" />
-                </div>
-
-                <div className={(!needsNewContract && !isContractEditable) ? 'opacity-70' : ''}>
-                  <label className="block text-[10px] uppercase font-bold text-rose-500 mb-1">Chiết khấu</label>
-                  <input id="input-breakdown-discount" type="number" value={form.discount} 
-                    disabled={!needsNewContract && !isContractEditable}
-                    onChange={e => handleBreakdownChange('discount', Number(e.target.value))}
-                    step="1000" inputMode="numeric"
-                    className="w-full bg-white border border-rose-200 rounded-lg px-2 py-1 text-sm text-rose-600 focus:ring-1 focus:ring-rose-400 focus:outline-none disabled:bg-slate-50" />
-                </div>
               </div>
 
               {form.included_fields?.includes('electric_fee') && (

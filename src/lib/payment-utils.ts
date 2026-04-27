@@ -243,12 +243,13 @@ export function calculateExpectedAmount(
     : (contract ? Number(contract.start_electric) || 0 : 0);
 
   const res = {
-    basePrice: roundUp10k(basePrice * prorateRatio),
-    extraPersonFee: roundUp10k(extraPersonFee * prorateRatio),
+    basePrice: roundUp10k(deposit * prorateRatio),
+    // extraPersonFee: roundUp10k(extraPersonFee * prorateRatio),
+    extraPersonFee: roundUp10k(extraPersonFee),
     internetSurcharge: roundUp10k(totalInternetSurcharge * prorateRatio),
     livingFee: roundUp10k(waterPrice * peopleCount * prorateRatio),
     // If old electric is 0, it means it's a new contract or reading not yet recorded
-    electricFee: oldElectric === 0 ? 0 : roundUp10k(totalElectricFee * prorateRatio),
+    electricFee: oldElectric === 0 ? 0 : roundUp10k(totalElectricFee),
     deposit: deposit,
     discount: contract ? (() => {
       const parseVal = (v: any) => {
@@ -327,16 +328,16 @@ export function sumBreakdown(form: PaymentFormData): number {
   const fields = form.included_fields || [];
   let sum = 0;
   if (fields.includes('base_rent')) sum += (Number(form.base_rent) || 0);
-  if (fields.includes('extra_person_fee')) sum += (Number(form.extra_person_fee) || 0);
+  // if (fields.includes('extra_person_fee')) sum += (Number(form.extra_person_fee) || 0);
   if (fields.includes('living_fee')) sum += (Number(form.living_fee) || 0);
   if (fields.includes('water_fee')) sum += (Number(form.water_fee) || 0);
   if (fields.includes('electric_fee')) sum += (Number(form.electric_fee) || 0);
   if (fields.includes('deposit_fee')) sum += (Number(form.deposit_fee) || 0);
   
   let finalSum = sum;
-  if (fields.includes('base_rent')) {
-    finalSum -= (Number(form.discount) || 0);
-  }
+  // if (fields.includes('base_rent')) {
+  //   finalSum -= (Number(form.discount) || 0);
+  // }
   
   return Math.max(0, roundUp10k(finalSum));
 }
