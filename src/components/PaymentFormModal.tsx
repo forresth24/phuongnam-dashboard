@@ -457,38 +457,39 @@ export function PaymentFormModal({
                     )}
                   </div>
                 ))}
-              </div>
 
-              <div className={`grid grid-cols-2 sm:grid-cols-3 gap-4 pt-3 border-t border-slate-100 transition-opacity ${(!needsNewContract && !isContractEditable) ? 'opacity-70' : ''}`}>
-                <div>
+                {/* Additional fields moved into the same grid */}
+                <div className={(!needsNewContract && !isContractEditable) ? 'opacity-70' : ''}>
                   <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Số người ở</label>
                   <input id="input-people-count" type="number" min={1} value={form.people_count}
                     inputMode="numeric"
                     disabled={!needsNewContract && !isContractEditable}
                     onChange={e => handlePeopleCountChange(Number(e.target.value) || 1)}
-                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none disabled:bg-slate-50" />
+                    className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none disabled:bg-slate-50" />
                 </div>
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
+
+                <div className={`${(!needsNewContract && !isContractEditable) ? 'opacity-70' : ''} ${!form.included_fields?.includes('extra_person_fee') ? 'opacity-40' : ''}`}>
+                  <div className="flex items-center gap-1 mb-1">
                     <input type="checkbox" checked={form.included_fields?.includes('extra_person_fee')} 
                       disabled={!needsNewContract && !isContractEditable}
                       onChange={() => toggleField('extra_person_fee')}
-                      className="w-3.5 h-3.5 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 disabled:opacity-50" />
-                    <label className="block text-[10px] uppercase font-bold text-slate-400">Phụ thu quá người</label>
+                      className="w-3 h-3 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 disabled:opacity-50" />
+                    <label className="block text-[10px] uppercase font-bold text-slate-400">Phụ thu</label>
                   </div>
                   <input id="input-breakdown-extra-person" type="number" value={form.extra_person_fee} 
                     disabled={!needsNewContract && !isContractEditable}
                     onChange={e => handleBreakdownChange('extra_person_fee', Number(e.target.value))}
                     step="1000" inputMode="numeric"
-                    className={`w-full bg-white border rounded-lg px-2 py-1.5 text-sm disabled:bg-slate-50 ${form.included_fields?.includes('extra_person_fee') ? 'border-slate-200' : 'border-slate-100 opacity-40'}`} />
+                    className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-sm disabled:bg-slate-50" />
                 </div>
-                <div>
-                  <label className="block text-[10px] uppercase font-bold text-rose-500 mb-1">Chiết khấu / Giảm giá</label>
+
+                <div className={(!needsNewContract && !isContractEditable) ? 'opacity-70' : ''}>
+                  <label className="block text-[10px] uppercase font-bold text-rose-500 mb-1">Chiết khấu</label>
                   <input id="input-breakdown-discount" type="number" value={form.discount} 
                     disabled={!needsNewContract && !isContractEditable}
                     onChange={e => handleBreakdownChange('discount', Number(e.target.value))}
                     step="1000" inputMode="numeric"
-                    className="w-full bg-white border border-rose-200 rounded-lg px-2 py-1.5 text-sm text-rose-600 focus:ring-1 focus:ring-rose-400 focus:outline-none disabled:bg-slate-50" />
+                    className="w-full bg-white border border-rose-200 rounded-lg px-2 py-1 text-sm text-rose-600 focus:ring-1 focus:ring-rose-400 focus:outline-none disabled:bg-slate-50" />
                 </div>
               </div>
 
