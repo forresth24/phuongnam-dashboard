@@ -155,7 +155,7 @@ export function calculateExpectedAmount(
   
   const waterPrice = Number(data.settings.WATER_PRICE_PER_PERSON) || 0;
   const internetSurcharge = Number(data.settings.SURCHARGE_PER_PERSON) || 0;
-  const electricPrice = Number(data.settings.ELECTRIC_PRICE_PER_MONTH) || 0; // Assuming fixed fee if calculating this way
+  const electricPrice = Number(data.settings.ELECTRIC_PRICE_PER_MONTH) || 0;
   const extraFeeSingle = Number(data.settings.EXTRA_FEE_SINGLE) || 0;
   const extraFeeDouble = Number(data.settings.EXTRA_FEE_DOUBLE) || 0;
 
@@ -175,8 +175,8 @@ export function calculateExpectedAmount(
   const totalInternetSurcharge = internetSurcharge * peopleCount;
   const totalElectricFee = electricPrice * peopleCount;
 
-  // Tiền cọc always full room price
-  const deposit = basePrice;
+  // Tiền cọc = Giá phòng + Phụ thu quá người
+  const deposit = basePrice + extraPersonFee;
 
   let daysStayed = 0;
   let daysInMonth = 30;
@@ -223,17 +223,29 @@ export function calculateExpectedAmount(
   }
 
   // Calculate prorated fees
-  // Determine proration ratio
-  // User request: always divide by 30, but cap at 1 (full month)
   const prorateRatio = daysStayed >= daysInMonth ? 1 : Math.min(1, daysStayed / 30);
   
+  // Find last payment to get electric reading
+  const contractPayments = contract 
+    ? data.payments.filter((p: any) => String(p.contract_id) === String(contract.id))
+    : [];
+  
+  const lastPayment = contractPayments.length > 0
+    ? contractPayments[contractPayments.length - 1]
+    : null;
+
+  const oldElectric = lastPayment 
+    ? (Number(lastPayment.new_electric) || 0)
+    : (contract ? Number(contract.start_electric) || 0 : 0);
+
   const res = {
     basePrice: roundUp10k(basePrice * prorateRatio),
     extraPersonFee: roundUp10k(extraPersonFee * prorateRatio),
     internetSurcharge: roundUp10k(totalInternetSurcharge * prorateRatio),
     livingFee: roundUp10k(waterPrice * peopleCount * prorateRatio),
-    electricFee: roundUp10k(totalElectricFee * prorateRatio),
-    deposit: deposit, // Always return the full deposit value for the form field
+    // If old electric is 0, it means it's a new contract or reading not yet recorded
+    electricFee: oldElectric === 0 ? 0 : roundUp10k(totalElectricFee * prorateRatio),
+    deposit: deposit,
     discount: contract ? (() => {
       const parseVal = (v: any) => {
         if (typeof v === 'number') return v;
@@ -270,7 +282,7 @@ export function calculateExpectedAmount(
     discount: res.discount,
     daysStayed,
     daysInMonth,
-    oldElectric: contract ? Number(contract.start_electric) || 0 : 0,
+    oldElectric: oldElectric,
     fullBasePrice: basePrice,
     fullExtraFee: extraPersonFee,
     fullLivingFee: livingFee,

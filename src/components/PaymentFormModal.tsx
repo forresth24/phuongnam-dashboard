@@ -158,7 +158,8 @@ export function PaymentFormModal({
     const nextForm = { ...form, [field]: val };
     const diff = Math.max(0, nextForm.new_electric - nextForm.old_electric);
     const unitPrice = Number(data.settings.ELECTRIC_PRICE) || 0;
-    const fee = roundUp10k(diff * unitPrice);
+    // If old electric is 0, it means it's a new contract or reading not yet recorded
+    const fee = nextForm.old_electric === 0 ? 0 : roundUp10k(diff * unitPrice);
     
     const finalForm = { ...nextForm, electric_fee: fee };
     setForm({ ...finalForm, amount: sumBreakdown(finalForm) });
@@ -410,15 +411,25 @@ export function PaymentFormModal({
             )}
 
             <div className="border-t border-slate-200 pt-3">
-              <div className="flex items-center gap-2 mb-3">
-                <input type="checkbox" 
-                  checked={['base_rent', 'water_fee', 'living_fee', 'electric_fee'].every(k => form.included_fields?.includes(k))}
-                  onChange={toggleMonthlyGroup}
-                  className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500" />
-                <label className="text-sm font-bold text-slate-700">Các khoản phí cố định (Phòng + Nước + Dịch vụ + Điện)</label>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <input type="checkbox" 
+                    checked={['base_rent', 'water_fee', 'living_fee', 'electric_fee'].every(k => form.included_fields?.includes(k))}
+                    onChange={toggleMonthlyGroup}
+                    className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500" />
+                  <label className="text-sm font-bold text-slate-700">Các khoản phí cố định (Phòng + Nước + Dịch vụ + Điện)</label>
+                </div>
+                {!needsNewContract && (
+                  <button 
+                    onClick={() => setIsContractEditable(!isContractEditable)}
+                    className={`text-[10px] px-2 py-0.5 rounded-md font-bold uppercase transition-colors ${isContractEditable ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-500'}`}
+                  >
+                    {isContractEditable ? 'Đang sửa' : 'Sửa nhanh'}
+                  </button>
+                )}
               </div>
               
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
                 {[
                   { key: 'base_rent', label: 'Tiền phòng' },
                   { key: 'water_fee', label: 'Nước' },
@@ -447,52 +458,30 @@ export function PaymentFormModal({
                   </div>
                 ))}
               </div>
-              {form.included_fields?.includes('electric_fee') && (
-                <p className="text-[10px] text-slate-400 mt-2 italic text-center">
-                  Tiền điện = ({form.new_electric} - {form.old_electric}) kWh × {formatVND(Number(data.settings.ELECTRIC_PRICE) || 0)}/kWh
-                </p>
-              )}
-            </div>
-          </div>
 
-          {/* Section 2: Contract Info & Surcharges */}
-          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
-            <div className="flex items-center justify-between border-b border-slate-200 pb-2 mb-2">
-              <p className="font-bold text-slate-700 text-sm">Thông tin hợp đồng & Phụ phí</p>
-              {!needsNewContract && (
-                <button 
-                  onClick={() => setIsContractEditable(!isContractEditable)}
-                  className={`text-[10px] px-2 py-0.5 rounded-md font-bold uppercase transition-colors ${isContractEditable ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-500'}`}
-                >
-                  {isContractEditable ? 'Đang sửa' : 'Sửa nhanh'}
-                </button>
-              )}
-            </div>
-            
-            <div className={`grid grid-cols-2 gap-4 transition-opacity ${(!needsNewContract && !isContractEditable) ? 'opacity-70' : ''}`}>
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Số người ở</label>
-                <input id="input-people-count" type="number" min={1} value={form.people_count}
-                  inputMode="numeric"
-                  disabled={!needsNewContract && !isContractEditable}
-                  onChange={e => handlePeopleCountChange(Number(e.target.value) || 1)}
-                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none disabled:bg-slate-50" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <input type="checkbox" checked={form.included_fields?.includes('extra_person_fee')} 
+              <div className={`grid grid-cols-2 sm:grid-cols-3 gap-4 pt-3 border-t border-slate-100 transition-opacity ${(!needsNewContract && !isContractEditable) ? 'opacity-70' : ''}`}>
+                <div>
+                  <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Số người ở</label>
+                  <input id="input-people-count" type="number" min={1} value={form.people_count}
+                    inputMode="numeric"
                     disabled={!needsNewContract && !isContractEditable}
-                    onChange={() => toggleField('extra_person_fee')}
-                    className="w-3.5 h-3.5 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 disabled:opacity-50" />
-                  <label className="block text-[10px] uppercase font-bold text-slate-400">Phụ thu quá người</label>
+                    onChange={e => handlePeopleCountChange(Number(e.target.value) || 1)}
+                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none disabled:bg-slate-50" />
                 </div>
-                <input id="input-breakdown-extra-person" type="number" value={form.extra_person_fee} 
-                  disabled={!needsNewContract && !isContractEditable}
-                  onChange={e => handleBreakdownChange('extra_person_fee', Number(e.target.value))}
-                  step="1000" inputMode="numeric"
-                  className={`w-full bg-white border rounded-lg px-2 py-1.5 text-sm disabled:bg-slate-50 ${form.included_fields?.includes('extra_person_fee') ? 'border-slate-200' : 'border-slate-100 opacity-40'}`} />
-              </div>
-              <div className="col-span-2 grid grid-cols-2 gap-4 pt-1">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <input type="checkbox" checked={form.included_fields?.includes('extra_person_fee')} 
+                      disabled={!needsNewContract && !isContractEditable}
+                      onChange={() => toggleField('extra_person_fee')}
+                      className="w-3.5 h-3.5 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 disabled:opacity-50" />
+                    <label className="block text-[10px] uppercase font-bold text-slate-400">Phụ thu quá người</label>
+                  </div>
+                  <input id="input-breakdown-extra-person" type="number" value={form.extra_person_fee} 
+                    disabled={!needsNewContract && !isContractEditable}
+                    onChange={e => handleBreakdownChange('extra_person_fee', Number(e.target.value))}
+                    step="1000" inputMode="numeric"
+                    className={`w-full bg-white border rounded-lg px-2 py-1.5 text-sm disabled:bg-slate-50 ${form.included_fields?.includes('extra_person_fee') ? 'border-slate-200' : 'border-slate-100 opacity-40'}`} />
+                </div>
                 <div>
                   <label className="block text-[10px] uppercase font-bold text-rose-500 mb-1">Chiết khấu / Giảm giá</label>
                   <input id="input-breakdown-discount" type="number" value={form.discount} 
@@ -501,10 +490,13 @@ export function PaymentFormModal({
                     step="1000" inputMode="numeric"
                     className="w-full bg-white border border-rose-200 rounded-lg px-2 py-1.5 text-sm text-rose-600 focus:ring-1 focus:ring-rose-400 focus:outline-none disabled:bg-slate-50" />
                 </div>
-                <div className="flex items-end pb-1">
-                  <p className="text-[10px] text-slate-400 italic leading-tight">Mục này luôn được trừ vào tổng tiền nếu &gt; 0.</p>
-                </div>
               </div>
+
+              {form.included_fields?.includes('electric_fee') && (
+                <p className="text-[10px] text-slate-400 mt-2 italic text-center">
+                  Tiền điện = ({form.new_electric} - {form.old_electric}) kWh × {formatVND(Number(data.settings.ELECTRIC_PRICE) || 0)}/kWh
+                </p>
+              )}
             </div>
           </div>
 
