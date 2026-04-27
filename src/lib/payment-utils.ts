@@ -174,7 +174,10 @@ export function calculateExpectedAmount(
   const livingFee = waterPrice * peopleCount;
   const totalInternetSurcharge = internetSurcharge * peopleCount;
   const totalElectricFee = electricPrice * peopleCount;
-  const discount = Number(contract.discount) || 0;
+  let discount = 0;
+  if (contract) {
+    discount = Number(contract.discount);
+  }
 
   // Tiền cọc = Giá phòng + Phụ thu quá người
   const deposit = basePrice + extraPersonFee - discount;
