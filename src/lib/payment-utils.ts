@@ -8,6 +8,8 @@ import type { DashboardData } from './api';
 export const formatVND = (amount: number) =>
   new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
 
+export const roundUp10k = (amount: number) => Math.ceil(amount / 10000) * 10000;
+
 export const todayStr = () => {
   const d = new Date();
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
@@ -66,6 +68,8 @@ export interface PaymentFormData {
   included_fields: string[]; // e.g. ['base_rent', 'water_fee']
   days_stayed: number;
   days_in_month: number;
+  old_electric: number;
+  new_electric: number;
 }
 
 export interface PaymentFieldError {
@@ -90,6 +94,7 @@ export const makeEmptyPaymentForm = (defaultDuration: number = 12): PaymentFormD
   base_rent: 0, extra_person_fee: 0, living_fee: 0, water_fee: 0, electric_fee: 0, deposit_fee: 0,
   included_fields: ['base_rent', 'extra_person_fee', 'living_fee', 'water_fee', 'electric_fee'],
   days_stayed: 30, days_in_month: 30,
+  old_electric: 0, new_electric: 0,
 });
 
 // ─── Expected Amount Calculation ──────────────────────────
@@ -103,8 +108,10 @@ export interface ExpectedAmountResult {
   livingFee: number;
   electricFee: number;
   deposit: number;
+  discount: number;
   daysStayed: number;
   daysInMonth: number;
+  oldElectric: number;
   // Full month values (unprorated)
   fullBasePrice: number;
   fullExtraFee: number;
@@ -216,19 +223,40 @@ export function calculateExpectedAmount(
   }
 
   // Calculate prorated fees
-  const prorateRatio = daysStayed / daysInMonth;
+  // Determine proration ratio
+  // User request: always divide by 30, but cap at 1 (full month)
+  const prorateRatio = daysStayed >= daysInMonth ? 1 : Math.min(1, daysStayed / 30);
   
   const res = {
-    basePrice: Math.round(basePrice * prorateRatio),
-    extraPersonFee: Math.round(extraPersonFee * prorateRatio),
-    internetSurcharge: Math.round(totalInternetSurcharge * prorateRatio),
-    livingFee: Math.round(livingFee * prorateRatio),
-    electricFee: Math.round(totalElectricFee * prorateRatio),
-    deposit: isNewContract ? deposit : 0, // Only include deposit if it's a new contract or requested
+    basePrice: roundUp10k(basePrice * prorateRatio),
+    extraPersonFee: roundUp10k(extraPersonFee * prorateRatio),
+    internetSurcharge: roundUp10k(totalInternetSurcharge * prorateRatio),
+    livingFee: roundUp10k(waterPrice * peopleCount * prorateRatio),
+    electricFee: roundUp10k(totalElectricFee * prorateRatio),
+    deposit: deposit, // Always return the full deposit value for the form field
+    discount: contract ? (() => {
+      const parseVal = (v: any) => {
+        if (typeof v === 'number') return v;
+        if (typeof v === 'string') return Number(v.replace(/[^0-9.-]+/g, '')) || 0;
+        return 0;
+      };
+      return (
+        parseVal(contract.discount_applied) || 
+        parseVal(contract['chiết khấu']) || 
+        parseVal(contract['giảm giá']) || 
+        parseVal(contract['chiết khấu/tháng']) || 
+        parseVal(contract['giảm giá/tháng']) || 
+        parseVal(contract['giam gia']) || 
+        parseVal(contract['chiet khau']) || 
+        parseVal(contract.discount) || 0
+      );
+    })() : 0,
   };
 
-  const total = res.basePrice + res.extraPersonFee + res.livingFee + res.internetSurcharge + res.electricFee + res.deposit;
-  const roundedTotal = total > 0 ? Math.ceil(total / 10000) * 10000 : 0;
+  // Recommended total: only include deposit if it's a new contract (Thu cọc)
+  const recommendedDeposit = isNewContract ? deposit : 0;
+  const total = res.basePrice + res.extraPersonFee + res.livingFee + res.internetSurcharge + res.electricFee + recommendedDeposit - res.discount;
+  const roundedTotal = total > 0 ? roundUp10k(total) : 0;
 
   return {
     total: roundedTotal,
@@ -239,8 +267,10 @@ export function calculateExpectedAmount(
     livingFee: res.livingFee,
     electricFee: res.electricFee,
     deposit: res.deposit,
+    discount: res.discount,
     daysStayed,
     daysInMonth,
+    oldElectric: contract ? Number(contract.start_electric) || 0 : 0,
     fullBasePrice: basePrice,
     fullExtraFee: extraPersonFee,
     fullLivingFee: livingFee,
@@ -287,13 +317,23 @@ export function sumBreakdown(form: PaymentFormData): number {
   if (fields.includes('electric_fee')) sum += (Number(form.electric_fee) || 0);
   if (fields.includes('deposit_fee')) sum += (Number(form.deposit_fee) || 0);
   
-  return sum - (Number(form.discount) || 0);
+  let finalSum = sum;
+  if (fields.includes('base_rent')) {
+    finalSum -= (Number(form.discount) || 0);
+  }
+  
+  return Math.max(0, roundUp10k(finalSum));
 }
 
 /** Update form with new expected amounts from calculateExpectedAmount */
 export function applyExpectedToForm(form: PaymentFormData, exp: ExpectedAmountResult): PaymentFormData {
-  const included = ['base_rent', 'extra_person_fee', 'living_fee', 'water_fee', 'electric_fee'];
-  if (exp.deposit > 0) included.push('deposit_fee');
+  let included = form.included_fields && form.included_fields.length > 0
+    ? form.included_fields
+    : ['base_rent', 'extra_person_fee', 'living_fee', 'water_fee', 'electric_fee'];
+  
+  if (!form.included_fields && exp.deposit > 0) {
+    included = [...included, 'deposit_fee'];
+  }
   
   const newForm = {
     ...form,
@@ -303,6 +343,9 @@ export function applyExpectedToForm(form: PaymentFormData, exp: ExpectedAmountRe
     water_fee: exp.livingFee,
     electric_fee: exp.electricFee,
     deposit_fee: exp.deposit,
+    discount: exp.discount,
+    old_electric: exp.oldElectric,
+    new_electric: exp.oldElectric, // Default same as old
     included_fields: included,
     days_stayed: exp.daysStayed,
     days_in_month: exp.daysInMonth,

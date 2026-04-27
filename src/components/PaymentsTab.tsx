@@ -104,7 +104,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
     const waterFee = Number(p.water_total) || Number(p['nước sinh hoạt']) || 0;
     const electricFee = Number(p.electric_total) || Number(p['điện sinh hoạt']) || 0;
     const depositFee = Number(p.deposit_fee) || Number(p['tiền cọc']) || 0;
-    const discount = Number(p.discount_applied) || Number(p['chiết khấu']) || 0;
+    const discount = Number(p.discount_applied) || Number(p['chiết khấu']) || Number(p['giảm giá']) || Number(p['chiết khấu/tháng']) || Number(p['discount']) || 0;
 
     const included = ['base_rent', 'extra_person_fee', 'living_fee', 'water_fee', 'electric_fee'];
     if (depositFee > 0) included.push('deposit_fee');
@@ -139,6 +139,8 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
       included_fields: included,
       days_stayed: Number(p.days_in_month) || 30,
       days_in_month: 30,
+      old_electric: Number(p.old_electric) || (contract ? Number(contract.start_electric) || 0 : 0),
+      new_electric: Number(p.new_electric) || 0,
     });
     setModalOpen(true);
   };

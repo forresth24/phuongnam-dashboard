@@ -8,6 +8,7 @@ import { Modal } from './ui/Modal';
 import { ConfirmDialog } from './ui/ConfirmDialog';
 import { DatePickerInput } from './ui/DatePickerInput';
 import { getContractMonthRange } from '../lib/settings-helpers';
+import { roundUp10k } from '../lib/payment-utils';
 
 const formatVND = (n: number) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(n);
 const todayStr = () => {
@@ -141,8 +142,8 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
     const peopleCount = Number(form.people_count) || 1;
     const roomType = (room ? room.type : 'Phòng đơn').toLowerCase();
     let epf = 0;
-    if (roomType === 'phòng đơn' && peopleCount > 1) epf = (Number(settings.EXTRA_FEE_SINGLE) || 0) * (peopleCount - 1);
-    else if (roomType === 'phòng đôi' && peopleCount > 2) epf = (Number(settings.EXTRA_FEE_DOUBLE) || 0) * (peopleCount - 2);
+    if (roomType === 'phòng đơn' && peopleCount > 1) epf = roundUp10k((Number(settings.EXTRA_FEE_SINGLE) || 0) * (peopleCount - 1));
+    else if (roomType === 'phòng đôi' && peopleCount > 2) epf = roundUp10k((Number(settings.EXTRA_FEE_DOUBLE) || 0) * (peopleCount - 2));
     setForm({ ...form, room_id: roomId, rent: price, deposit: price, extra_person_fee: epf });
     if (errors.room_id) setErrors({ ...errors, room_id: undefined });
   };
@@ -277,7 +278,7 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
           {/* Room */}
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Mã phòng<RequiredStar /></label>
-            <select value={form.room_id} onChange={e => onRoomChange(e.target.value)} disabled={!!editItem}
+            <select id="select-contract-room" value={form.room_id} onChange={e => onRoomChange(e.target.value)} disabled={!!editItem}
               className={`w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none disabled:bg-slate-50 ${errors.room_id ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`}>
               <option value="">Chọn phòng</option>
               {data.rooms.map((r: any) => <option key={r.id} value={r.id}>{r.name} ({r.id}) — {formatVND(r.price)}</option>)}
@@ -287,42 +288,43 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
           {/* Tenant */}
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Khách đại diện<RequiredStar /></label>
-            <input value={form.tenant} onChange={e => F('tenant', e.target.value)}
+            <input id="input-contract-tenant" value={form.tenant} onChange={e => F('tenant', e.target.value)}
               className={`w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none ${errors.tenant ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`} />
             <FieldErr msg={errors.tenant} />
           </div>
           {/* Phone */}
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Số điện thoại</label>
-            <input value={form.phone} onChange={e => F('phone', e.target.value)} placeholder="0901234567"
+            <input id="input-contract-phone" value={form.phone} onChange={e => F('phone', e.target.value)} placeholder="0901234567" inputMode="tel"
               className={`w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none ${errors.phone ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`} />
             <FieldErr msg={errors.phone} />
           </div>
           {/* CCCD */}
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Số CCCD</label>
-            <input value={form.cccd} onChange={e => F('cccd', e.target.value)} placeholder="079123456789"
+            <input id="input-contract-cccd" value={form.cccd} onChange={e => F('cccd', e.target.value)} placeholder="079123456789" inputMode="numeric"
               className={`w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none ${errors.cccd ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`} />
             <FieldErr msg={errors.cccd} />
           </div>
           {/* People count */}
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Số người ở</label>
-            <input type="number" value={form.people_count} onChange={e => F('people_count', e.target.value)} min={1}
+            <input id="input-contract-people" type="number" value={form.people_count} onChange={e => F('people_count', e.target.value)} min={1} inputMode="numeric"
               className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
           </div>
           {/* Move-in date */}
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Ngày vào ở (tính tiền HĐ mới)</label>
-            <DatePickerInput value={form.move_in_date} onChange={v => F('move_in_date', v)} />
+            <DatePickerInput id="input-contract-move-in" value={form.move_in_date} onChange={v => F('move_in_date', v)} />
           </div>
           {/* Duration */}
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Thời hạn HĐ (tháng)</label>
-            <input
+            <input id="input-contract-duration"
               type="number"
               min={minMonths} max={maxMonths}
               value={form.duration}
+              inputMode="numeric"
               onChange={e => F('duration', Number(e.target.value) || 1)}
               className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none"
             />
@@ -331,32 +333,36 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
           {/* Rent */}
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Giá thuê/tháng</label>
-            <input type="number" value={form.rent} onChange={e => F('rent', Number(e.target.value))}
+            <input id="input-contract-rent" type="number" value={form.rent} onChange={e => F('rent', Number(e.target.value))}
+              inputMode="numeric" step="1000"
               className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
             {form.rent > 0 && <p className="text-[11px] text-slate-400 mt-0.5">{formatVND(form.rent)}</p>}
           </div>
           {/* Electric */}
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Số điện ban đầu</label>
-            <input type="number" value={form.start_electric} onChange={e => F('start_electric', Number(e.target.value))}
+            <input id="input-contract-electric" type="number" value={form.start_electric} onChange={e => F('start_electric', Number(e.target.value))}
+              inputMode="numeric"
               className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
           </div>
           {/* Extra Person Fee */}
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Phụ thu quá người/tháng</label>
-            <input type="number" value={form.extra_person_fee} onChange={e => F('extra_person_fee', Number(e.target.value))}
+            <input id="input-contract-extra-fee" type="number" value={form.extra_person_fee} onChange={e => F('extra_person_fee', Number(e.target.value))}
+              inputMode="numeric" step="1000"
               className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
           </div>
           {/* Discount */}
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Chiết khấu/tháng</label>
-            <input type="number" value={form.discount} onChange={e => F('discount', Number(e.target.value))}
+            <input id="input-contract-discount" type="number" value={form.discount} onChange={e => F('discount', Number(e.target.value))}
+              inputMode="numeric" step="1000"
               className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
           </div>
           {/* Note */}
           <div className="col-span-2">
             <label className="block text-xs font-medium text-slate-600 mb-1">Ghi chú</label>
-            <textarea value={form.note} onChange={e => F('note', e.target.value)} rows={2}
+            <textarea id="textarea-contract-note" value={form.note} onChange={e => F('note', e.target.value)} rows={2}
               className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
           </div>
           {saveError && (

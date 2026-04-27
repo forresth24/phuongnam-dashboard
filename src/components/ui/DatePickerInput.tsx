@@ -9,6 +9,7 @@ interface DatePickerInputProps {
   placeholder?: string;
   className?: string;
   error?: boolean;
+  id?: string;
 }
 
 function parseDDMMYYYY(s: string): Date | null {
@@ -21,7 +22,7 @@ function formatDDMMYYYY(d: Date): string {
   return format(d, 'dd/MM/yyyy');
 }
 
-export function DatePickerInput({ value, onChange, placeholder = 'DD/MM/YYYY', className = '', error = false }: DatePickerInputProps) {
+export function DatePickerInput({ value, onChange, placeholder = 'DD/MM/YYYY', className = '', error = false, id }: DatePickerInputProps) {
   const [open, setOpen] = useState(false);
   const [currentMonth, setCurrentMonth] = useState(() => parseDDMMYYYY(value) || new Date());
   const ref = useRef<HTMLDivElement>(null);
@@ -59,6 +60,7 @@ export function DatePickerInput({ value, onChange, placeholder = 'DD/MM/YYYY', c
     <div ref={ref} className="relative">
       <div className="relative">
         <input
+          id={id}
           value={value}
           onChange={e => {
             onChange(e.target.value);

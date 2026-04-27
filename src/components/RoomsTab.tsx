@@ -119,9 +119,12 @@ export function RoomsTab({ config, data, loading, role, onRefresh, onNavigate }:
       water_fee: exp.livingFee,
       electric_fee: exp.electricFee,
       deposit_fee: exp.deposit,
+      discount: exp.discount,
       included_fields: included,
       days_stayed: exp.daysStayed,
       days_in_month: exp.daysInMonth,
+      old_electric: exp.oldElectric,
+      new_electric: exp.oldElectric,
     };
   };
 

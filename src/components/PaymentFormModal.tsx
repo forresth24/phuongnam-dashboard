@@ -8,7 +8,7 @@ import { ConfirmDialog } from './ui/ConfirmDialog';
 import { DatePickerInput } from './ui/DatePickerInput';
 import { getReceivers, autoPaymentStatus, getContractMonthRange } from '../lib/settings-helpers';
 import {
-  formatVND, todayStr, firstDayOfMonthStr,
+  formatVND, todayStr, firstDayOfMonthStr, roundUp10k,
   calculateExpectedAmount, validatePaymentForm, sumBreakdown,
   makeEmptyPaymentForm,
   type PaymentFormData, type PaymentFieldError,
@@ -43,8 +43,9 @@ export function PaymentFormModal({
   const [form, setForm] = useState<PaymentFormData>(initialForm || makeEmptyPaymentForm());
   const [errors, setErrors] = useState<PaymentFieldError>({});
   const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState('');
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [partialConfirm, setPartialConfirm] = useState(false);
+  const [isContractEditable, setIsContractEditable] = useState(false);
   const [pendingSubmit, setPendingSubmit] = useState(false);
 
   const receivers = getReceivers(data.settings);
@@ -72,7 +73,7 @@ export function PaymentFormModal({
     return calculateExpectedAmount(r, data, getActiveContract, isNew, sd, pc);
   };
 
-  const getExpected = () => calcExpected().total;
+  const getExpected = () => sumBreakdown(form);
 
   // ─── Field Helpers ────────────────────────────────────────
 
@@ -97,7 +98,6 @@ export function PaymentFormModal({
       cccd: '', issue_date: '', issue_place: '', address: '', dob: '',
       start_date: startDate,
       people_count: contract ? Number(contract.people_count) || 1 : 1,
-      discount: 0,
       ...applyExpectedFields(exp),
     }));
     if (errors.room_id) setErrors(prev => ({ ...prev, room_id: undefined }));
@@ -114,9 +114,12 @@ export function PaymentFormModal({
       water_fee: exp.livingFee,
       electric_fee: exp.electricFee,
       deposit_fee: exp.deposit,
+      discount: exp.discount,
       included_fields: included,
       days_stayed: exp.daysStayed,
       days_in_month: exp.daysInMonth,
+      old_electric: exp.oldElectric,
+      new_electric: exp.oldElectric,
     };
     partialForm.amount = sumBreakdown(partialForm as any);
     return partialForm;
@@ -138,17 +141,27 @@ export function PaymentFormModal({
 
   const handleDaysChange = (days: number) => {
     const exp = calcExpected();
-    const ratio = days / exp.daysInMonth;
+    const ratio = days >= exp.daysInMonth ? 1 : days / 30;
     const newForm = {
       ...form,
       days_stayed: days,
-      base_rent: Math.round(exp.fullBasePrice * ratio),
-      extra_person_fee: Math.round(exp.fullExtraFee * ratio),
-      living_fee: Math.round(exp.fullSurcharge * ratio),
-      water_fee: Math.round(exp.fullLivingFee * ratio),
-      electric_fee: Math.round(exp.fullElectric * ratio),
+      base_rent: roundUp10k(exp.fullBasePrice * ratio),
+      extra_person_fee: roundUp10k(exp.fullExtraFee * ratio),
+      living_fee: roundUp10k(exp.fullSurcharge * ratio),
+      water_fee: roundUp10k(exp.fullLivingFee * ratio),
+      electric_fee: roundUp10k(exp.fullElectric * ratio),
     };
     setForm({ ...newForm, amount: sumBreakdown(newForm) });
+  };
+
+  const handleElectricReadingChange = (field: 'old_electric' | 'new_electric', val: number) => {
+    const nextForm = { ...form, [field]: val };
+    const diff = Math.max(0, nextForm.new_electric - nextForm.old_electric);
+    const unitPrice = Number(data.settings.ELECTRIC_PRICE) || 0;
+    const fee = roundUp10k(diff * unitPrice);
+    
+    const finalForm = { ...nextForm, electric_fee: fee };
+    setForm({ ...finalForm, amount: sumBreakdown(finalForm) });
   };
 
   const handleBreakdownChange = (key: string, val: number) => {
@@ -204,15 +217,18 @@ export function PaymentFormModal({
         amount: form.amount, date: form.date || todayStr(),
         note: form.note, receiver: form.receiver, method: form.method,
         status: form.status, is_partial: isPartial,
-        total_amount_calculated: form.amount,
+        total_amount_calculated: expected,
         discount_applied: form.discount,
         base_rent: form.base_rent,
         extra_fee_total: form.extra_person_fee,
         surcharge_total: form.living_fee,
         water_total: form.water_fee,
         electric_total: form.electric_fee,
+        old_electric: form.old_electric,
+        new_electric: form.new_electric,
         deposit_fee: form.deposit_fee,
-        days_in_month: expResult.daysStayed,
+        days_stayed: form.days_stayed || expResult.daysStayed,
+        days_in_month: expResult.daysInMonth,
         payment_type: (form.included_fields?.length === 1 && form.included_fields.includes('deposit_fee')) 
           ? 'Tiền cọc' 
           : 'Thu tiền tháng',
@@ -304,19 +320,19 @@ export function PaymentFormModal({
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">Tên khách<RequiredStar /></label>
-                  <input value={form.tenant} onChange={e => F('tenant', e.target.value)}
+                  <input id="input-tenant-name" value={form.tenant} onChange={e => F('tenant', e.target.value)}
                     className={`w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none ${errors.tenant ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`} />
                   <FieldErr msg={errors.tenant} />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">Số điện thoại</label>
-                  <input value={form.phone} onChange={e => F('phone', e.target.value)} placeholder="0901234567"
+                  <input id="input-tenant-phone" value={form.phone} onChange={e => F('phone', e.target.value)} placeholder="0901234567"
                     className={`w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none ${errors.phone ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`} />
                   <FieldErr msg={errors.phone} />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">Số CCCD</label>
-                  <input value={form.cccd} onChange={e => F('cccd', e.target.value)} placeholder="079123456789"
+                  <input id="input-tenant-cccd" value={form.cccd} onChange={e => F('cccd', e.target.value)} placeholder="079123456789"
                     className={`w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none ${errors.cccd ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`} />
                   <FieldErr msg={errors.cccd} />
                 </div>
@@ -345,7 +361,8 @@ export function PaymentFormModal({
                 )}
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">Thời hạn HĐ (tháng)</label>
-                  <input type="number" min={minMonths} max={maxMonths} value={form.duration}
+                  <input id="input-contract-duration" type="number" min={minMonths} max={maxMonths} value={form.duration}
+                    inputMode="numeric"
                     onChange={e => F('duration', Math.max(minMonths, Math.min(maxMonths, Number(e.target.value) || minMonths)))}
                     className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
                   <p className="text-[11px] text-slate-400 mt-0.5">{minMonths}–{maxMonths} tháng</p>
@@ -370,10 +387,11 @@ export function PaymentFormModal({
                   {form.days_stayed === form.days_in_month ? (
                     <div className="w-20 bg-white border border-indigo-200 text-indigo-700 font-bold rounded-xl px-3 py-2 text-sm">1 tháng</div>
                   ) : (
-                    <input type="number" value={form.days_stayed} onChange={e => handleDaysChange(Number(e.target.value) || 0)}
+                    <input id="input-prorate-days" type="number" value={form.days_stayed} onChange={e => handleDaysChange(Number(e.target.value) || 0)}
+                      inputMode="numeric"
                       className="w-20 bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
                   )}
-                  <span className="text-slate-500 font-medium text-sm">/ {form.days_in_month} ngày</span>
+                  <span className="text-slate-500 font-medium text-sm">/ tháng</span>
                   {form.days_stayed === form.days_in_month && (
                     <button onClick={() => handleDaysChange(form.days_in_month - 1)} className="text-[10px] text-indigo-600 font-medium hover:underline">Sửa số ngày</button>
                   )}
@@ -409,38 +427,79 @@ export function PaymentFormModal({
                 ].map(({ key, label }) => (
                   <div key={key} className={!form.included_fields?.includes(key) ? 'opacity-40' : ''}>
                     <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">{label}</label>
-                    <input type="number" value={(form as any)[key]} onChange={e => handleBreakdownChange(key, Number(e.target.value))}
-                      className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-sm focus:ring-1 focus:ring-indigo-400 focus:outline-none" />
+                    {key === 'electric_fee' && form.included_fields?.includes('electric_fee') ? (
+                      <div className="space-y-1">
+                        <div className="flex gap-1">
+                          <input type="number" value={form.old_electric} placeholder="Cũ" onChange={e => handleElectricReadingChange('old_electric', Number(e.target.value))}
+                            className="w-full bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 text-[11px] focus:outline-none" title="Chỉ số cũ" />
+                          <input type="number" value={form.new_electric} placeholder="Mới" onChange={e => handleElectricReadingChange('new_electric', Number(e.target.value))}
+                            className="w-full bg-white border border-indigo-200 rounded px-1.5 py-0.5 text-[11px] focus:outline-none" title="Chỉ số mới" />
+                        </div>
+                        <input id={`input-breakdown-${key}`} type="number" value={(form as any)[key]} onChange={e => handleBreakdownChange(key, Number(e.target.value))}
+                          step="1000" inputMode="numeric"
+                          className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-sm font-bold text-indigo-600 focus:ring-1 focus:ring-indigo-400 focus:outline-none" />
+                      </div>
+                    ) : (
+                      <input id={`input-breakdown-${key}`} type="number" value={(form as any)[key]} onChange={e => handleBreakdownChange(key, Number(e.target.value))}
+                        step="1000" inputMode="numeric"
+                        className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-sm focus:ring-1 focus:ring-indigo-400 focus:outline-none" />
+                    )}
                   </div>
                 ))}
               </div>
+              {form.included_fields?.includes('electric_fee') && (
+                <p className="text-[10px] text-slate-400 mt-2 italic text-center">
+                  Tiền điện = ({form.new_electric} - {form.old_electric}) kWh × {formatVND(Number(data.settings.ELECTRIC_PRICE) || 0)}/kWh
+                </p>
+              )}
             </div>
           </div>
 
           {/* Section 2: Contract Info & Surcharges */}
           <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
-            <p className="font-bold text-slate-700 text-sm border-b border-slate-200 pb-2 mb-2">Thông tin hợp đồng & Phụ phí</p>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-2 mb-2">
+              <p className="font-bold text-slate-700 text-sm">Thông tin hợp đồng & Phụ phí</p>
+              {!needsNewContract && (
+                <button 
+                  onClick={() => setIsContractEditable(!isContractEditable)}
+                  className={`text-[10px] px-2 py-0.5 rounded-md font-bold uppercase transition-colors ${isContractEditable ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-500'}`}
+                >
+                  {isContractEditable ? 'Đang sửa' : 'Sửa nhanh'}
+                </button>
+              )}
+            </div>
+            
+            <div className={`grid grid-cols-2 gap-4 transition-opacity ${(!needsNewContract && !isContractEditable) ? 'opacity-70' : ''}`}>
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">Số người ở</label>
-                <input type="number" min={1} value={form.people_count}
+                <input id="input-people-count" type="number" min={1} value={form.people_count}
+                  inputMode="numeric"
+                  disabled={!needsNewContract && !isContractEditable}
                   onChange={e => handlePeopleCountChange(Number(e.target.value) || 1)}
-                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
+                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none disabled:bg-slate-50" />
               </div>
               <div>
                 <div className="flex items-center gap-2 mb-1">
-                  <input type="checkbox" checked={form.included_fields?.includes('extra_person_fee')} onChange={() => toggleField('extra_person_fee')}
-                    className="w-3.5 h-3.5 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500" />
+                  <input type="checkbox" checked={form.included_fields?.includes('extra_person_fee')} 
+                    disabled={!needsNewContract && !isContractEditable}
+                    onChange={() => toggleField('extra_person_fee')}
+                    className="w-3.5 h-3.5 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 disabled:opacity-50" />
                   <label className="block text-[10px] uppercase font-bold text-slate-400">Phụ thu quá người</label>
                 </div>
-                <input type="number" value={form.extra_person_fee} onChange={e => handleBreakdownChange('extra_person_fee', Number(e.target.value))}
-                  className={`w-full bg-white border rounded-lg px-2 py-1.5 text-sm ${form.included_fields?.includes('extra_person_fee') ? 'border-slate-200' : 'border-slate-100 opacity-40'}`} />
+                <input id="input-breakdown-extra-person" type="number" value={form.extra_person_fee} 
+                  disabled={!needsNewContract && !isContractEditable}
+                  onChange={e => handleBreakdownChange('extra_person_fee', Number(e.target.value))}
+                  step="1000" inputMode="numeric"
+                  className={`w-full bg-white border rounded-lg px-2 py-1.5 text-sm disabled:bg-slate-50 ${form.included_fields?.includes('extra_person_fee') ? 'border-slate-200' : 'border-slate-100 opacity-40'}`} />
               </div>
               <div className="col-span-2 grid grid-cols-2 gap-4 pt-1">
                 <div>
                   <label className="block text-[10px] uppercase font-bold text-rose-500 mb-1">Chiết khấu / Giảm giá</label>
-                  <input type="number" value={form.discount} onChange={e => handleBreakdownChange('discount', Number(e.target.value))}
-                    className="w-full bg-white border border-rose-200 rounded-lg px-2 py-1.5 text-sm text-rose-600 focus:ring-1 focus:ring-rose-400 focus:outline-none" />
+                  <input id="input-breakdown-discount" type="number" value={form.discount} 
+                    disabled={!needsNewContract && !isContractEditable}
+                    onChange={e => handleBreakdownChange('discount', Number(e.target.value))}
+                    step="1000" inputMode="numeric"
+                    className="w-full bg-white border border-rose-200 rounded-lg px-2 py-1.5 text-sm text-rose-600 focus:ring-1 focus:ring-rose-400 focus:outline-none disabled:bg-slate-50" />
                 </div>
                 <div className="flex items-end pb-1">
                   <p className="text-[10px] text-slate-400 italic leading-tight">Mục này luôn được trừ vào tổng tiền nếu &gt; 0.</p>
@@ -457,7 +516,8 @@ export function PaymentFormModal({
                   className="w-4 h-4 text-amber-600 border-amber-300 rounded focus:ring-amber-500" />
                 <label className="text-sm font-bold text-amber-800 uppercase tracking-wide">Tiền cọc (Thế chân)</label>
               </div>
-              <input type="number" value={form.deposit_fee} onChange={e => handleBreakdownChange('deposit_fee', Number(e.target.value))}
+              <input id="input-breakdown-deposit" type="number" value={form.deposit_fee} onChange={e => handleBreakdownChange('deposit_fee', Number(e.target.value))}
+                step="1000" inputMode="numeric"
                 className={`w-32 bg-white border rounded-xl px-3 py-2 text-sm font-bold text-right ${form.included_fields?.includes('deposit_fee') ? 'border-amber-200 text-amber-700' : 'border-amber-50 opacity-40'}`} />
             </div>
           </div>
@@ -472,7 +532,8 @@ export function PaymentFormModal({
               </div>
               <div className="w-40 text-right">
                 <label className="block text-xs font-medium text-slate-600 mb-1">Số tiền thực thu<RequiredStar /></label>
-                <input type="number" value={form.amount} onChange={e => handleAmountChange(Number(e.target.value))}
+                <input id="input-actual-amount" type="number" value={form.amount} onChange={e => handleAmountChange(Number(e.target.value))}
+                  step="1000" inputMode="numeric"
                   className={`w-full bg-white border rounded-xl px-3 py-2 text-sm font-bold text-indigo-700 focus:ring-2 focus:ring-indigo-400 focus:outline-none ${errors.amount ? 'border-rose-400 bg-rose-50/30' : 'border-indigo-200'}`} />
                 {form.amount > 0 && <p className="text-[10px] font-bold text-indigo-500 mt-1">{formatVND(form.amount)}</p>}
                 <FieldErr msg={errors.amount} />
@@ -502,7 +563,7 @@ export function PaymentFormModal({
             {/* Receiver */}
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Người nhận<RequiredStar /></label>
-              <select value={form.receiver} onChange={e => onReceiverChange(e.target.value)}
+              <select id="select-receiver" value={form.receiver} onChange={e => onReceiverChange(e.target.value)}
                 className={`w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none ${errors.receiver ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`}>
                 <option value="Chưa nhận">Chưa nhận</option>
                 {receivers.map(r => <option key={r} value={r}>{r}</option>)}
@@ -514,7 +575,7 @@ export function PaymentFormModal({
             {form.receiver !== 'Chưa nhận' && (
               <div className="col-span-2">
                 <label className="block text-xs font-medium text-slate-600 mb-1">Hình thức</label>
-                <select value={form.method} onChange={e => F('method', e.target.value)}
+                <select id="select-payment-method" value={form.method} onChange={e => F('method', e.target.value)}
                   className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none">
                   <option value="Tiền mặt">Tiền mặt</option>
                   <option value="Chuyển khoản">Chuyển khoản</option>
@@ -526,7 +587,7 @@ export function PaymentFormModal({
           {/* Note */}
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Ghi chú</label>
-            <textarea value={form.note} onChange={e => F('note', e.target.value)} rows={2} placeholder="Tháng 4/2026..."
+            <textarea id="textarea-note" value={form.note} onChange={e => F('note', e.target.value)} rows={2} placeholder="Tháng 4/2026..."
               className={`w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none`} />
           </div>
 
