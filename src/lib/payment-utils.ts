@@ -9,6 +9,7 @@ export const formatVND = (amount: number) =>
   new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
 
 export const roundUp10k = (amount: number) => Math.ceil(amount / 10000) * 10000;
+export const roundUp5k = (amount: number) => Math.ceil(amount / 5000) * 5000;
 
 export const todayStr = () => {
   const d = new Date();
@@ -246,8 +247,8 @@ export function calculateExpectedAmount(
     basePrice: roundUp10k(deposit * prorateRatio),
     // extraPersonFee: roundUp10k(extraPersonFee * prorateRatio),
     extraPersonFee: roundUp10k(extraPersonFee),
-    internetSurcharge: roundUp10k(totalInternetSurcharge * prorateRatio),
-    livingFee: roundUp10k(waterPrice * peopleCount * prorateRatio),
+    internetSurcharge: roundUp5k(totalInternetSurcharge * prorateRatio),
+    livingFee: roundUp5k(waterPrice * peopleCount * prorateRatio),
     // If old electric is 0, it means it's a new contract or reading not yet recorded
     electricFee: oldElectric === 0 ? 0 : roundUp10k(totalElectricFee),
     deposit: deposit,

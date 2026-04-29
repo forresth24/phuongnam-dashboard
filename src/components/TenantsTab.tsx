@@ -14,7 +14,7 @@ interface Props {
   onRefresh: () => void;
 }
 
-const emptyForm = { room_id: '', name: '', phone: '', cccd: '', dob: '', issue_date: '', issue_place: '', address: '' };
+const emptyForm = { room_id: '', name: '', phone: '', cccd: '', dob: '', issue_date: '', issue_place: 'Cục Cảnh Sát', address: '' };
 
 export function TenantsTab({ config, data, loading, role, onRefresh }: Props) {
   const [search, setSearch] = useState('');
@@ -170,7 +170,14 @@ export function TenantsTab({ config, data, loading, role, onRefresh }: Props) {
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Nơi cấp</label>
-            <input value={form.issue_place} onChange={e => F('issue_place', e.target.value)} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
+            <select 
+              value={form.issue_place || 'Cục Cảnh Sát'} 
+              onChange={e => F('issue_place', e.target.value)} 
+              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none"
+            >
+              <option value="Cục Cảnh Sát">Cục Cảnh Sát</option>
+              <option value="Bộ Công An">Bộ Công An</option>
+            </select>
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Địa chỉ</label>
