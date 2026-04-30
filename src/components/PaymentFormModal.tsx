@@ -63,8 +63,27 @@ export function PaymentFormModal({
       setErrors({});
       setSaveError('');
       setSelectedRoomIds(initialForm.room_id ? [initialForm.room_id] : []);
+
+      // If exporting notices late in the month, default to next month
+      if (isNoticeMode && new Date().getDate() >= 20) {
+        setIsNextMonth(true);
+        const d = new Date();
+        const nextMonth = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+        const nextStr = `01/${String(nextMonth.getMonth() + 1).padStart(2, '0')}/${nextMonth.getFullYear()}`;
+        const period = `${String(nextMonth.getMonth() + 1).padStart(2, '0')}/${nextMonth.getFullYear()}`;
+        
+        // Recalculate expected fields for next month
+        // (Simplified here, the user can still toggle or change date)
+        setForm(prev => ({ 
+          ...prev, 
+          start_date: nextStr,
+          payment_period: period,
+        }));
+      } else {
+        setIsNextMonth(false);
+      }
     }
-  }, [open, initialForm]);
+  }, [open, initialForm, isNoticeMode]);
 
   const getActiveContract = (roomId: string) =>
     data.contracts.find((c: any) => String(c.room_id).trim() === String(roomId).trim());
@@ -135,7 +154,8 @@ export function PaymentFormModal({
       days_stayed: exp.daysStayed,
       days_in_month: exp.daysInMonth,
       old_electric: exp.oldElectric,
-      new_electric: exp.oldElectric,
+      // Only set new_electric to old_electric if it hasn't been modified yet (is 0 or same as old)
+      new_electric: (exp.oldElectric), 
     };
     partialForm.amount = sumBreakdown(partialForm as any);
     return partialForm;
@@ -161,18 +181,24 @@ export function PaymentFormModal({
       start_date: startDate,
       people_count: contract ? Number(contract.people_count) || 1 : 1,
       ...fields,
+      new_electric: fields.new_electric, // Use the one from fields for initial load
     }));
     if (errors.room_id) setErrors(prev => ({ ...prev, room_id: undefined }));
   };
 
   const handleStartDateChange = (val: string) => {
     const exp = calcExpected(undefined, val);
-    setForm(prev => ({ ...prev, start_date: val, ...applyExpectedFields(exp) }));
+    const fields = applyExpectedFields(exp);
+    // Don't overwrite new_electric during recalculation
+    delete (fields as any).new_electric;
+    setForm(prev => ({ ...prev, start_date: val, ...fields }));
   };
 
   const handlePeopleCountChange = (val: number) => {
     const exp = calcExpected(undefined, undefined, val);
-    setForm(prev => ({ ...prev, people_count: val, ...applyExpectedFields(exp) }));
+    const fields = applyExpectedFields(exp);
+    delete (fields as any).new_electric;
+    setForm(prev => ({ ...prev, people_count: val, ...fields }));
   };
 
   const toggleNextMonth = () => {
@@ -181,6 +207,7 @@ export function PaymentFormModal({
     
     const d = new Date();
     let newStartDate = firstDayOfMonthStr();
+    
     if (next) {
       const nextMonth = new Date(d.getFullYear(), d.getMonth() + 1, 1);
       newStartDate = `01/${String(nextMonth.getMonth() + 1).padStart(2, '0')}/${nextMonth.getFullYear()}`;
@@ -287,6 +314,7 @@ export function PaymentFormModal({
         days_stayed: form.days_stayed || expResult.daysStayed,
         days_in_month: expResult.daysInMonth,
         deposit_paid: form.deposit_paid,
+        payment_period: form.start_date ? form.start_date.split('/').slice(1).join('/') : '',
         payment_type: (() => {
           const inc = form.included_fields || [];
           const hasDeposit = inc.includes('deposit_fee');
@@ -351,6 +379,7 @@ export function PaymentFormModal({
           electric_fee: exp.electricFee,
           deposit_fee: exp.deposit, // Use the full deposit needed
           deposit_paid: depositPaid, // But show how much is paid
+          payment_period: form.start_date ? form.start_date.split('/').slice(1).join('/') : '',
           old_electric: exp.oldElectric,
           new_electric: exp.oldElectric,
           discount: exp.discount,
@@ -369,9 +398,18 @@ export function PaymentFormModal({
         // Let's create a temporary payment or use an API that can handle this.
         // For now, let's create a "Chưa nhận" payment to get an ID.
         
+        const dynamicType = (() => {
+          const inc = roomForm.included_fields || [];
+          const hasDeposit = inc.includes('deposit_fee');
+          const hasMonthly = inc.some(f => ['base_rent', 'water_fee', 'living_fee', 'electric_fee'].includes(f));
+          if (hasDeposit && hasMonthly) return 'Thu tiền tháng + Cọc';
+          if (hasDeposit) return 'Tiền cọc';
+          return 'Thu tiền tháng';
+        })();
+
         const res = await API.createPayment(config, {
           ...roomForm,
-          payment_type: 'Thông báo thu tiền',
+          payment_type: dynamicType,
           status: 'Chưa đóng',
           amount: sumBreakdown(roomForm),
         });

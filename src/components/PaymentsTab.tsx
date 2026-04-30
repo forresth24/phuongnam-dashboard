@@ -175,6 +175,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
               <tr>
                 <th className="px-4 py-3 font-medium">HĐ / Phòng</th>
                 <th className="px-4 py-3 font-medium">Loại GD</th>
+                <th className="px-4 py-3 font-medium">Kỳ</th>
                 <th className="px-4 py-3 font-medium">Số tiền</th>
                 <th className="px-4 py-3 font-medium">Ngày</th>
                 <th className="px-4 py-3 font-medium">Người nhận</th>
@@ -194,6 +195,11 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
                   <td className="px-4 py-3 min-w-[130px]">
                     <span className="block text-sm">{p.payment_type || 'Tiền phòng'}</span>
                     {String(p.is_partial).toUpperCase() === 'TRUE' && <Badge variant="danger" className="mt-1">Trả thiếu</Badge>}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="text-xs font-medium text-slate-600">
+                      {p.payment_period || (p.date ? p.date.split('/').slice(1).join('/') : '—')}
+                    </span>
                   </td>
                   <td className="px-4 py-3 min-w-[130px]">
                     <div className="font-bold text-indigo-600">{formatVND(p.amount)}</div>

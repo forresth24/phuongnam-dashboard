@@ -73,6 +73,7 @@ export interface PaymentFormData {
   new_electric: number;
   previous_debt: number;
   deposit_paid: number;
+  payment_period?: string;
 }
 
 export interface PaymentFieldError {
