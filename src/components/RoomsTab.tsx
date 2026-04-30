@@ -37,6 +37,7 @@ export function RoomsTab({ config, data, loading, role, onRefresh, onNavigate }:
   // Quick payment
   const [payModalOpen, setPayModalOpen] = useState(false);
   const [payInitialForm, setPayInitialForm] = useState<PaymentFormData | null>(null);
+  const [isNoticeMode, setIsNoticeMode] = useState(false);
 
   if (loading) return <div className="flex h-64 items-center justify-center"><Loader2 className="animate-spin text-indigo-500" size={32} /></div>;
   if (!data) return null;
@@ -102,6 +103,13 @@ export function RoomsTab({ config, data, loading, role, onRefresh, onNavigate }:
       ...applyFields(exp, isDepositOnly),
     };
     setPayInitialForm(initForm);
+    setIsNoticeMode(false);
+    setPayModalOpen(true);
+  };
+
+  const openNoticeMode = () => {
+    setPayInitialForm(makeEmptyPaymentForm(minMonths));
+    setIsNoticeMode(true);
     setPayModalOpen(true);
   };
 
@@ -137,11 +145,18 @@ export function RoomsTab({ config, data, loading, role, onRefresh, onNavigate }:
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-bold text-slate-800">Danh sách phòng</h2>
-        {isAdmin && (
-          <button onClick={openCreate} className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-colors">
-            <Plus size={18} /> Thêm phòng
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {isAdmin && (
+            <button onClick={openNoticeMode} className="inline-flex items-center gap-2 bg-white border border-indigo-200 text-indigo-600 hover:bg-indigo-50 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors shadow-sm">
+              <ScrollText size={18} /> Thông báo thu tiền
+            </button>
+          )}
+          {isAdmin && (
+            <button onClick={openCreate} className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-colors shadow-sm">
+              <Plus size={18} /> Thêm phòng
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -257,6 +272,7 @@ export function RoomsTab({ config, data, loading, role, onRefresh, onNavigate }:
           initialForm={payInitialForm}
           showRoomSelector={false}
           showExtendedTenantFields={false}
+          isNoticeMode={isNoticeMode}
         />
       )}
 

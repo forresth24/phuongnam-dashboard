@@ -1,6 +1,6 @@
 // Shared Payment Form Modal — used by both RoomsTab and PaymentsTab
 import { useState, useEffect } from 'react';
-import { Loader2, Banknote } from 'lucide-react';
+import { Loader2, Banknote, ScrollText } from 'lucide-react';
 import type { AppConfig, DashboardData } from '../lib/api';
 import { API } from '../lib/api';
 import { Modal } from './ui/Modal';
@@ -32,6 +32,8 @@ interface PaymentFormModalProps {
   showRoomSelector?: boolean;
   /** Whether to show extended tenant fields (issue_date, issue_place, dob, address) */
   showExtendedTenantFields?: boolean;
+  /** Mode for exporting monthly notifications */
+  isNoticeMode?: boolean;
 }
 
 export function PaymentFormModal({
@@ -39,6 +41,7 @@ export function PaymentFormModal({
   initialForm, editItem, title,
   showRoomSelector = false,
   showExtendedTenantFields = false,
+  isNoticeMode = false,
 }: PaymentFormModalProps) {
   const [form, setForm] = useState<PaymentFormData>(initialForm || makeEmptyPaymentForm());
   const [errors, setErrors] = useState<PaymentFieldError>({});
@@ -47,6 +50,8 @@ export function PaymentFormModal({
   const [partialConfirm, setPartialConfirm] = useState(false);
   const [isContractEditable, setIsContractEditable] = useState(false);
   const [pendingSubmit, setPendingSubmit] = useState(false);
+  const [isNextMonth, setIsNextMonth] = useState(false);
+  const [selectedRoomIds, setSelectedRoomIds] = useState<string[]>(initialForm?.room_id ? [initialForm.room_id] : []);
 
   const receivers = getReceivers(data.settings);
   const { min: minMonths, max: maxMonths } = getContractMonthRange(data.settings);
@@ -57,6 +62,7 @@ export function PaymentFormModal({
       setForm(initialForm);
       setErrors({});
       setSaveError('');
+      setSelectedRoomIds(initialForm.room_id ? [initialForm.room_id] : []);
     }
   }, [open, initialForm]);
 
@@ -68,8 +74,17 @@ export function PaymentFormModal({
   const calcExpected = (roomId?: string, startDate?: string, peopleCount?: number) => {
     const r = roomId || form.room_id;
     const isNew = r ? !getActiveContract(r) : false;
-    const sd = startDate || form.start_date;
     const pc = peopleCount ?? form.people_count;
+    
+    let sd = startDate || form.start_date;
+    if (isNextMonth && !startDate) {
+      const parts = sd.split('/');
+      if (parts.length === 3) {
+        const d = new Date(Number(parts[2]), Number(parts[1]), 1); // 1st of next month
+        sd = `01/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+      }
+    }
+    
     return calculateExpectedAmount(r, data, getActiveContract, isNew, sd, pc);
   };
 
@@ -87,25 +102,25 @@ export function PaymentFormModal({
     if (errors.receiver) setErrors(prev => ({ ...prev, receiver: undefined }));
   };
 
-  const onRoomChange = (roomId: string) => {
-    const contract = getActiveContract(roomId);
-    const startDate = firstDayOfMonthStr();
-    const exp = calculateExpectedAmount(roomId, data, getActiveContract, !contract, startDate);
-    setForm(prev => ({
-      ...prev,
-      room_id: roomId, contract_id: contract ? contract.id : '',
-      tenant: contract ? contract.tenant : '', phone: contract ? contract.phone : '',
-      cccd: '', issue_date: '', issue_place: '', address: '', dob: '',
-      start_date: startDate,
-      people_count: contract ? Number(contract.people_count) || 1 : 1,
-      ...applyExpectedFields(exp),
-    }));
-    if (errors.room_id) setErrors(prev => ({ ...prev, room_id: undefined }));
-  };
+  const applyExpectedFields = (exp: ReturnType<typeof calculateExpectedAmount>, roomId?: string) => {
+    const rid = roomId || form.room_id;
+    const contract = getActiveContract(rid);
+    const needsContract = !!(rid && !contract);
+    
+    // Calculate already paid deposit for this contract
+    let depositPaid = 0;
+    if (contract) {
+      depositPaid = data.payments
+        .filter((p: any) => String(p.contract_id) === String(contract.id) && String(p.payment_type || '').toLowerCase().includes('cọc'))
+        .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    }
 
-  const applyExpectedFields = (exp: ReturnType<typeof calculateExpectedAmount>) => {
-    const included = ['base_rent', 'extra_person_fee', 'living_fee', 'water_fee', 'electric_fee'];
-    if (exp.deposit > 0) included.push('deposit_fee');
+    let included = ['base_rent', 'extra_person_fee', 'living_fee', 'water_fee', 'electric_fee'];
+    if (needsContract) {
+      included = ['deposit_fee']; // Default only deposit for new contracts
+    } else if (exp.deposit > 0 && depositPaid < exp.deposit) {
+      // If deposit not fully paid, we might want to include it, but let's keep monthly as default for existing contracts
+    }
     
     const partialForm: any = {
       base_rent: exp.basePrice,
@@ -114,6 +129,7 @@ export function PaymentFormModal({
       water_fee: exp.livingFee,
       electric_fee: exp.electricFee,
       deposit_fee: exp.deposit,
+      deposit_paid: depositPaid,
       discount: exp.discount,
       included_fields: included,
       days_stayed: exp.daysStayed,
@@ -129,6 +145,26 @@ export function PaymentFormModal({
     F('amount', val);
   };
 
+  const onRoomChange = (roomId: string) => {
+    const contract = getActiveContract(roomId);
+    const startDate = firstDayOfMonthStr();
+    const exp = calculateExpectedAmount(roomId, data, getActiveContract, !contract, startDate);
+    
+    // We need to pass roomId to applyExpectedFields because form.room_id hasn't updated yet
+    const fields = applyExpectedFields(exp, roomId);
+    
+    setForm(prev => ({
+      ...prev,
+      room_id: roomId, contract_id: contract ? contract.id : '',
+      tenant: contract ? contract.tenant : '', phone: contract ? contract.phone : '',
+      cccd: '', issue_date: '', issue_place: '', address: '', dob: '',
+      start_date: startDate,
+      people_count: contract ? Number(contract.people_count) || 1 : 1,
+      ...fields,
+    }));
+    if (errors.room_id) setErrors(prev => ({ ...prev, room_id: undefined }));
+  };
+
   const handleStartDateChange = (val: string) => {
     const exp = calcExpected(undefined, val);
     setForm(prev => ({ ...prev, start_date: val, ...applyExpectedFields(exp) }));
@@ -137,6 +173,25 @@ export function PaymentFormModal({
   const handlePeopleCountChange = (val: number) => {
     const exp = calcExpected(undefined, undefined, val);
     setForm(prev => ({ ...prev, people_count: val, ...applyExpectedFields(exp) }));
+  };
+
+  const toggleNextMonth = () => {
+    const next = !isNextMonth;
+    setIsNextMonth(next);
+    
+    const d = new Date();
+    let newStartDate = firstDayOfMonthStr();
+    if (next) {
+      const nextMonth = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+      newStartDate = `01/${String(nextMonth.getMonth() + 1).padStart(2, '0')}/${nextMonth.getFullYear()}`;
+    }
+    
+    const exp = calculateExpectedAmount(form.room_id, data, getActiveContract, needsNewContract, newStartDate, form.people_count);
+    setForm(prev => ({ 
+      ...prev, 
+      start_date: newStartDate, 
+      ...applyExpectedFields(exp) 
+    }));
   };
 
   const handleDaysChange = (days: number) => {
@@ -231,9 +286,15 @@ export function PaymentFormModal({
         deposit_fee: form.deposit_fee,
         days_stayed: form.days_stayed || expResult.daysStayed,
         days_in_month: expResult.daysInMonth,
-        payment_type: (form.included_fields?.length === 1 && form.included_fields.includes('deposit_fee')) 
-          ? 'Tiền cọc' 
-          : 'Thu tiền tháng',
+        deposit_paid: form.deposit_paid,
+        payment_type: (() => {
+          const inc = form.included_fields || [];
+          const hasDeposit = inc.includes('deposit_fee');
+          const hasMonthly = inc.some(f => ['base_rent', 'water_fee', 'living_fee', 'electric_fee'].includes(f));
+          if (hasDeposit && hasMonthly) return 'Thu tiền tháng + Cọc';
+          if (hasDeposit) return 'Tiền cọc';
+          return 'Thu tiền tháng';
+        })(),
       };
 
       if (editItem) {
@@ -256,6 +317,88 @@ export function PaymentFormModal({
     } catch (e: any) { setSaveError(e.message || 'Lỗi không xác định'); }
     setSaving(false);
     setPendingSubmit(false);
+  };
+
+  const handleBatchExport = async () => {
+    setSaving(true);
+    setSaveError('');
+    try {
+      const results = [];
+      for (const rid of selectedRoomIds) {
+        const contract = getActiveContract(rid);
+        if (!contract) continue;
+
+        // Calculate for each room based on current toggle
+        const exp = calculateExpectedAmount(rid, data, getActiveContract, false, form.start_date, Number(contract.people_count) || 1);
+        
+        // Calculate already paid deposit for this contract
+        const depositPaid = data.payments
+          .filter((p: any) => String(p.contract_id) === String(contract.id) && String(p.payment_type || '').toLowerCase().includes('cọc'))
+          .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+
+        // Build a temporary form for this room
+        const roomForm: PaymentFormData = {
+          ...form,
+          room_id: rid,
+          contract_id: contract.id,
+          tenant: contract.tenant,
+          phone: contract.phone,
+          people_count: Number(contract.people_count) || 1,
+          base_rent: exp.basePrice,
+          extra_person_fee: exp.extraPersonFee,
+          living_fee: exp.internetSurcharge,
+          water_fee: exp.livingFee,
+          electric_fee: exp.electricFee,
+          deposit_fee: exp.deposit, // Use the full deposit needed
+          deposit_paid: depositPaid, // But show how much is paid
+          old_electric: exp.oldElectric,
+          new_electric: exp.oldElectric,
+          discount: exp.discount,
+          amount: 0, // Not needed for notice
+          receiver: 'Chưa nhận',
+          date: todayStr(),
+          note: isNextMonth ? `Tháng ${form.start_date.split('/')[1]}/${form.start_date.split('/')[2]}` : form.note,
+          included_fields: ['base_rent', 'extra_person_fee', 'living_fee', 'water_fee', 'electric_fee'],
+          days_stayed: exp.daysStayed,
+          days_in_month: exp.daysInMonth,
+        };
+
+        // We don't save payments here, we just need to generate the PDF.
+        // But the current API doesn't have a "preview only" PDF for room.
+        // It uses `generateReceiptPdf` which needs a payment_id or `generatePaymentPdf` for contract.
+        // Let's create a temporary payment or use an API that can handle this.
+        // For now, let's create a "Chưa nhận" payment to get an ID.
+        
+        const res = await API.createPayment(config, {
+          ...roomForm,
+          payment_type: 'Thông báo thu tiền',
+          status: 'Chưa đóng',
+          amount: sumBreakdown(roomForm),
+        });
+        
+        // Trigger PDF generation (this part depends on how the user wants to download them)
+        // Usually, we just open them in new tabs or combine them.
+        const pdfRes = await API.getReceiptPdf(config, res.id);
+        results.push({ roomName: rid, pdf: pdfRes.base64 });
+      }
+      
+      if (results.length > 0) {
+        // Just open the first one for now or provide links
+        const link = document.createElement('a');
+        link.href = `data:application/pdf;base64,${results[0].pdf}`;
+        link.download = `Thong_bao_thu_tien_${results[0].roomName}.pdf`;
+        link.click();
+        
+        if (results.length > 1) {
+          alert(`Đã tạo ${results.length} thông báo. Trình duyệt sẽ tải xuống file đầu tiên.`);
+        }
+      }
+      
+      onClose();
+    } catch (e: any) {
+      setSaveError(e.message || 'Lỗi khi xuất thông báo');
+    }
+    setSaving(false);
   };
 
   const handleSubmit = async () => {
@@ -285,14 +428,16 @@ export function PaymentFormModal({
   const payRoomObj = form.room_id ? data.rooms.find((r: any) => r.id === form.room_id) : null;
   const expResult = form.room_id ? calcExpected() : null;
 
-  const modalTitle = title || (editItem ? 'Sửa khoản thu' : (payRoomObj ? `Thu tiền — ${payRoomObj.name}` : 'Thu tiền nhanh'));
+  const modalTitle = isNoticeMode 
+    ? 'Xuất thông báo thu tiền'
+    : title || (editItem ? 'Sửa khoản thu' : (payRoomObj ? `Thu tiền — ${payRoomObj.name}` : 'Thu tiền nhanh'));
 
   return (
     <>
       <Modal open={open} onClose={onClose} title={modalTitle} maxWidth="max-w-xl">
         <div className="space-y-4">
           {/* Room selector (PaymentsTab mode) */}
-          {showRoomSelector && (
+          {showRoomSelector && !isNoticeMode && (
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Mã phòng<RequiredStar /></label>
               <select value={form.room_id} onChange={e => onRoomChange(e.target.value)} disabled={!!editItem}
@@ -307,8 +452,30 @@ export function PaymentFormModal({
             </div>
           )}
 
+          {/* Multi-room selector for Notice Mode */}
+          {isNoticeMode && (
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
+              <label className="block text-xs font-bold text-slate-500 mb-2 uppercase">Chọn phòng cần xuất ({selectedRoomIds.length})</label>
+              <div className="grid grid-cols-4 gap-2 max-h-32 overflow-y-auto pr-2 custom-scrollbar">
+                {data.rooms.filter(r => r.status === 'occupied').map((r: any) => (
+                  <button key={r.id} 
+                    onClick={() => {
+                      const next = selectedRoomIds.includes(r.id) 
+                        ? selectedRoomIds.filter(id => id !== r.id)
+                        : [...selectedRoomIds, r.id];
+                      setSelectedRoomIds(next);
+                      if (next.length === 1) onRoomChange(next[0]);
+                    }}
+                    className={`px-2 py-1.5 rounded-lg text-xs font-medium border transition-all ${selectedRoomIds.includes(r.id) ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm' : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300'}`}>
+                    {r.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Room info header (RoomsTab mode — room pre-selected) */}
-          {!showRoomSelector && payRoomObj && (
+          {!showRoomSelector && !isNoticeMode && payRoomObj && (
             <div className="bg-slate-50 rounded-xl p-3 flex items-center justify-between">
               <div><span className="font-bold text-slate-900">{payRoomObj.name}</span><span className="text-xs text-slate-500 ml-2">{payRoomObj.type}</span></div>
               <span className="text-sm font-medium text-indigo-600">{formatVND(payRoomObj.price || 0)}/tháng</span>
@@ -424,6 +591,14 @@ export function PaymentFormModal({
                     step="1000" inputMode="numeric"
                     className="w-full bg-white border border-rose-200 rounded-lg px-2 py-1 text-sm text-rose-600 focus:ring-1 focus:ring-rose-400 focus:outline-none disabled:bg-slate-50" />
                 </div>
+
+                <div>
+                  <label className="block text-[10px] uppercase font-bold text-amber-600 mb-1">Nợ kỳ trước</label>
+                  <input id="input-breakdown-debt" type="number" value={form.previous_debt} 
+                    onChange={e => handleBreakdownChange('previous_debt', Number(e.target.value))}
+                    step="1000" inputMode="numeric"
+                    className="w-full bg-white border border-amber-200 rounded-lg px-2 py-1 text-sm text-amber-700 focus:ring-1 focus:ring-amber-400 focus:outline-none" />
+                </div>
               </div>
             </div>
           </div>
@@ -449,7 +624,14 @@ export function PaymentFormModal({
               </div>
               <div className="flex-1">
                 <label className="block text-xs font-medium text-slate-600 mb-1">Tính từ ngày</label>
-                <DatePickerInput value={form.start_date || ''} onChange={handleStartDateChange} />
+                <div className="flex items-center gap-2">
+                  <div className="flex-1"><DatePickerInput value={form.start_date || ''} onChange={handleStartDateChange} /></div>
+                  <button 
+                    onClick={toggleNextMonth}
+                    className={`px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all border ${isNextMonth ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-200 text-indigo-600 hover:bg-indigo-50'}`}>
+                    {isNextMonth ? 'Tới tháng sau ✅' : 'Tháng sau?'}
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -508,18 +690,26 @@ export function PaymentFormModal({
           </div>
 
           {/* Section 3: Security Deposit */}
-          <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <input type="checkbox" checked={form.included_fields?.includes('deposit_fee')} onChange={() => toggleField('deposit_fee')}
-                  className="w-4 h-4 text-amber-600 border-amber-300 rounded focus:ring-amber-500" />
-                <label className="text-sm font-bold text-amber-800 uppercase tracking-wide">Tiền cọc (Thế chân)</label>
+          {!isNoticeMode && (
+            <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <input type="checkbox" checked={form.included_fields?.includes('deposit_fee')} onChange={() => toggleField('deposit_fee')}
+                    className="w-4 h-4 text-amber-600 border-amber-300 rounded focus:ring-amber-500" />
+                  <label className="text-sm font-bold text-amber-800 uppercase tracking-wide">Tiền cọc (Thế chân)</label>
+                </div>
+                <input id="input-breakdown-deposit" type="number" value={form.deposit_fee} onChange={e => handleBreakdownChange('deposit_fee', Number(e.target.value))}
+                  step="1000" inputMode="numeric"
+                  className={`w-32 bg-white border rounded-xl px-3 py-2 text-sm font-bold text-right ${form.included_fields?.includes('deposit_fee') ? 'border-amber-200 text-amber-700' : 'border-amber-50 opacity-40'}`} />
               </div>
-              <input id="input-breakdown-deposit" type="number" value={form.deposit_fee} onChange={e => handleBreakdownChange('deposit_fee', Number(e.target.value))}
-                step="1000" inputMode="numeric"
-                className={`w-32 bg-white border rounded-xl px-3 py-2 text-sm font-bold text-right ${form.included_fields?.includes('deposit_fee') ? 'border-amber-200 text-amber-700' : 'border-amber-50 opacity-40'}`} />
+              {form.included_fields?.includes('deposit_fee') && form.deposit_paid > 0 && (
+                <div className="mt-2 text-[11px] text-amber-700 flex justify-between px-1">
+                  <span>Đã thu trước đó:</span>
+                  <span className="font-bold">{formatVND(form.deposit_paid)}</span>
+                </div>
+              )}
             </div>
-          </div>
+          )}
 
           {/* Payment execution details */}
           <div className="grid grid-cols-2 gap-4">
@@ -592,10 +782,11 @@ export function PaymentFormModal({
 
           {saveError && <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-sm text-rose-700">⚠️ {saveError}</div>}
 
-          <button onClick={handleSubmit} disabled={saving || pendingSubmit}
-            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-xl font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
+          <button onClick={isNoticeMode ? handleBatchExport : handleSubmit} disabled={saving || pendingSubmit || (isNoticeMode && selectedRoomIds.length === 0)}
+            className={`w-full text-white py-2.5 rounded-xl font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2 ${isNoticeMode ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
             {(saving || pendingSubmit) && <Loader2 size={16} className="animate-spin" />}
-            <Banknote size={18} /> {editItem ? 'Cập nhật' : (needsNewContract ? 'Tạo HĐ + Thu tiền' : 'Thu tiền')}
+            {isNoticeMode ? <ScrollText size={18} /> : <Banknote size={18} />} 
+            {isNoticeMode ? `Xuất ${selectedRoomIds.length} thông báo` : (editItem ? 'Cập nhật' : (needsNewContract ? 'Tạo HĐ + Thu tiền' : 'Thu tiền'))}
           </button>
         </div>
       </Modal>

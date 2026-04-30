@@ -71,6 +71,8 @@ export interface PaymentFormData {
   days_in_month: number;
   old_electric: number;
   new_electric: number;
+  previous_debt: number;
+  deposit_paid: number;
 }
 
 export interface PaymentFieldError {
@@ -96,6 +98,8 @@ export const makeEmptyPaymentForm = (defaultDuration: number = 12): PaymentFormD
   included_fields: ['base_rent', 'extra_person_fee', 'living_fee', 'water_fee', 'electric_fee'],
   days_stayed: 30, days_in_month: 30,
   old_electric: 0, new_electric: 0,
+  previous_debt: 0,
+  deposit_paid: 0,
 });
 
 // ─── Expected Amount Calculation ──────────────────────────
@@ -231,17 +235,19 @@ export function calculateExpectedAmount(
   const prorateRatio = daysStayed >= daysInMonth ? 1 : Math.min(1, daysStayed / 30);
   
   // Find last payment to get electric reading
-  const contractPayments = contract 
-    ? data.payments.filter((p: any) => String(p.contract_id) === String(contract.id))
-    : [];
-  
-  const lastPayment = contractPayments.length > 0
-    ? contractPayments[contractPayments.length - 1]
-    : null;
-
-  const oldElectric = lastPayment 
-    ? (Number(lastPayment.new_electric) || 0)
-    : (contract ? Number(contract.start_electric) || 0 : 0);
+  let oldElectric = 0;
+  if (contract) {
+    const validPayments = data.payments
+      .filter((p: any) => String(p.contract_id) === String(contract.id) && (Number(p.new_electric) || 0) > 0);
+    
+    if (validPayments.length > 0) {
+      // Get the one with highest ID or last in list if already ordered
+      const last = validPayments[validPayments.length - 1];
+      oldElectric = Number(last.new_electric) || 0;
+    } else if (contract) {
+      oldElectric = Number(contract.start_electric) || 0;
+    }
+  }
 
   const res = {
     basePrice: roundUp10k(deposit * prorateRatio),
@@ -329,16 +335,21 @@ export function sumBreakdown(form: PaymentFormData): number {
   const fields = form.included_fields || [];
   let sum = 0;
   if (fields.includes('base_rent')) sum += (Number(form.base_rent) || 0);
-  // if (fields.includes('extra_person_fee')) sum += (Number(form.extra_person_fee) || 0);
+  if (fields.includes('extra_person_fee')) sum += (Number(form.extra_person_fee) || 0);
   if (fields.includes('living_fee')) sum += (Number(form.living_fee) || 0);
   if (fields.includes('water_fee')) sum += (Number(form.water_fee) || 0);
   if (fields.includes('electric_fee')) sum += (Number(form.electric_fee) || 0);
-  if (fields.includes('deposit_fee')) sum += (Number(form.deposit_fee) || 0);
+  if (fields.includes('deposit_fee')) {
+    const totalDepositNeeded = Number(form.deposit_fee) || 0;
+    const alreadyPaid = Number(form.deposit_paid) || 0;
+    sum += Math.max(0, totalDepositNeeded - alreadyPaid);
+  }
+  sum += (Number(form.previous_debt) || 0);
   
   let finalSum = sum;
-  // if (fields.includes('base_rent')) {
-  //   finalSum -= (Number(form.discount) || 0);
-  // }
+  if (fields.includes('base_rent')) {
+    finalSum -= (Number(form.discount) || 0);
+  }
   
   return Math.max(0, roundUp10k(finalSum));
 }
