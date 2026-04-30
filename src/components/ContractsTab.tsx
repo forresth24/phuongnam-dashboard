@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Pencil, Trash2, Archive, Loader2, FileDown } from 'lucide-react';
+import { Plus, Pencil, Trash2, Archive, Loader2, FileDown, ArrowUpDown, ChevronUp, ChevronDown } from 'lucide-react';
 import { API, downloadBase64Pdf } from '../lib/api';
 import type { AppConfig, DashboardData, UserRole } from '../lib/api';
 import { Badge } from './ui/Badge';
@@ -67,13 +67,54 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
   const [archiveId, setArchiveId] = useState<string | null>(null);
   const [acting, setActing] = useState(false);
   const [pdfLoading, setPdfLoading] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<string>('room_id');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
   if (loading) return <div className="flex h-64 items-center justify-center"><Loader2 className="animate-spin text-indigo-500" size={32} /></div>;
   if (!data) return null;
 
   const isAdmin = role === 'admin';
-  const contracts = filter === 'active' ? data.contracts : data.contracts_all;
+  const rawContracts = filter === 'active' ? data.contracts : data.contracts_all;
   const { min: minMonths, max: maxMonths } = getContractMonthRange(data.settings);
+
+  const sortedContracts = [...rawContracts].sort((a, b) => {
+    let valA = a[sortBy], valB = b[sortBy];
+    if (sortBy === 'rent' || sortBy === 'deposit' || sortBy === 'people_count' || sortBy === 'duration') {
+      valA = Number(valA) || 0;
+      valB = Number(valB) || 0;
+    } else {
+      valA = String(valA || '').toLowerCase();
+      valB = String(valB || '').toLowerCase();
+      
+      // Special handling for room_id to sort numerically if possible
+      if (sortBy === 'room_id') {
+        const numA = parseInt(valA.replace(/\D/g, ''));
+        const numB = parseInt(valB.replace(/\D/g, ''));
+        if (!isNaN(numA) && !isNaN(numB)) {
+          valA = numA;
+          valB = numB;
+        }
+      }
+    }
+
+    if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+    if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  const toggleSort = (key: string) => {
+    if (sortBy === key) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(key);
+      setSortOrder('asc');
+    }
+  };
+
+  const SortIcon = ({ col }: { col: string }) => {
+    if (sortBy !== col) return <ArrowUpDown size={12} className="ml-1 opacity-20 group-hover:opacity-50" />;
+    return sortOrder === 'asc' ? <ChevronUp size={12} className="ml-1 text-indigo-500" /> : <ChevronDown size={12} className="ml-1 text-indigo-500" />;
+  };
 
   const displayRange = (start: string, end: string) => {
     if (!start || !end) return `${start || '—'} → ${end || '—'}`;
@@ -226,20 +267,20 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
           <table className="w-full text-left text-sm">
             <thead className="bg-slate-50 text-slate-500">
               <tr>
-                <th className="px-4 py-3 font-medium">Mã HĐ</th>
-                <th className="px-4 py-3 font-medium">Phòng</th>
-                <th className="px-4 py-3 font-medium">Khách</th>
-                <th className="px-4 py-3 font-medium">SĐT</th>
-                <th className="px-4 py-3 font-medium">Thời hạn</th>
-                <th className="px-4 py-3 font-medium">Giá thuê</th>
-                <th className="px-4 py-3 font-medium">Cọc</th>
-                <th className="px-4 py-3 font-medium">Trạng thái</th>
+                <th onClick={() => toggleSort('id')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">Mã HĐ <SortIcon col="id" /></div></th>
+                <th onClick={() => toggleSort('room_id')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">Phòng <SortIcon col="room_id" /></div></th>
+                <th onClick={() => toggleSort('tenant')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">Khách <SortIcon col="tenant" /></div></th>
+                <th onClick={() => toggleSort('phone')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">SĐT <SortIcon col="phone" /></div></th>
+                <th onClick={() => toggleSort('start_date')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">Thời hạn <SortIcon col="start_date" /></div></th>
+                <th onClick={() => toggleSort('rent')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">Giá thuê <SortIcon col="rent" /></div></th>
+                <th onClick={() => toggleSort('deposit')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">Cọc <SortIcon col="deposit" /></div></th>
+                <th onClick={() => toggleSort('status')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">Trạng thái <SortIcon col="status" /></div></th>
                 {isAdmin && <th className="px-4 py-3 font-medium">Thao tác</th>}
                 {!isAdmin && <th className="px-4 py-3 font-medium">Xuất PDF</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {contracts.map((c: any) => (
+              {sortedContracts.map((c: any) => (
                 <motion.tr key={c.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="hover:bg-slate-50/50 transition-colors">
                   <td className="px-4 py-3 font-mono text-xs text-slate-700">{c.id}</td>
                   <td className="px-4 py-3 font-medium">{c.room_id}</td>
@@ -266,7 +307,7 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
                     </td>
                 </motion.tr>
               ))}
-              {contracts.length === 0 && <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-400">Không có hợp đồng nào</td></tr>}
+              {sortedContracts.length === 0 && <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-400">Không có hợp đồng nào</td></tr>}
             </tbody>
           </table>
         </div>

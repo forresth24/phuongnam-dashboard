@@ -39,6 +39,10 @@ export function RoomsTab({ config, data, loading, role, onRefresh, onNavigate }:
   const [payInitialForm, setPayInitialForm] = useState<PaymentFormData | null>(null);
   const [isNoticeMode, setIsNoticeMode] = useState(false);
 
+  // Sorting
+  const [sortBy, setSortBy] = useState<'name' | 'price' | 'status'>('name');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+
   if (loading) return <div className="flex h-64 items-center justify-center"><Loader2 className="animate-spin text-indigo-500" size={32} /></div>;
   if (!data) return null;
 
@@ -141,10 +145,51 @@ export function RoomsTab({ config, data, loading, role, onRefresh, onNavigate }:
   const detailTenants = detailRoom ? data.tenants.filter((t: any) => String(t.room_id).trim() === String(detailRoom).trim()) : [];
   const detailRoomObj = detailRoom ? rooms.find((r: any) => String(r.id) === String(detailRoom)) : null;
 
+  const sortedRooms = [...rooms].sort((a, b) => {
+    let valA, valB;
+    if (sortBy === 'price') {
+      valA = a.price || 0;
+      valB = b.price || 0;
+    } else if (sortBy === 'status') {
+      valA = a.status || '';
+      valB = b.status || '';
+    } else {
+      // Sort by name (extract number if possible)
+      valA = a.name || '';
+      valB = b.name || '';
+      const numA = parseInt(valA.replace(/\D/g, ''));
+      const numB = parseInt(valB.replace(/\D/g, ''));
+      if (!isNaN(numA) && !isNaN(numB)) {
+        valA = numA;
+        valB = numB;
+      }
+    }
+
+    if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+    if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  const toggleSort = (key: 'name' | 'price' | 'status') => {
+    if (sortBy === key) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(key);
+      setSortOrder(key === 'price' ? 'desc' : 'asc'); // Default price to desc (highest first)
+    }
+  };
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-slate-800">Danh sách phòng</h2>
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div className="flex items-center gap-4">
+          <h2 className="text-xl font-bold text-slate-800">Danh sách phòng</h2>
+          <div className="flex bg-slate-100 rounded-xl p-1 text-[11px] font-medium">
+            <button onClick={() => toggleSort('name')} className={`px-3 py-1.5 rounded-lg transition-colors ${sortBy === 'name' ? 'bg-white shadow text-indigo-700' : 'text-slate-500'}`}>Tên {sortBy === 'name' && (sortOrder === 'asc' ? '↑' : '↓')}</button>
+            <button onClick={() => toggleSort('price')} className={`px-3 py-1.5 rounded-lg transition-colors ${sortBy === 'price' ? 'bg-white shadow text-indigo-700' : 'text-slate-500'}`}>Giá {sortBy === 'price' && (sortOrder === 'asc' ? '↑' : '↓')}</button>
+            <button onClick={() => toggleSort('status')} className={`px-3 py-1.5 rounded-lg transition-colors ${sortBy === 'status' ? 'bg-white shadow text-indigo-700' : 'text-slate-500'}`}>Trạng thái {sortBy === 'status' && (sortOrder === 'asc' ? '↑' : '↓')}</button>
+          </div>
+        </div>
         <div className="flex items-center gap-2">
           {isAdmin && (
             <button onClick={openNoticeMode} className="inline-flex items-center gap-2 bg-white border border-indigo-200 text-indigo-600 hover:bg-indigo-50 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors shadow-sm">
@@ -160,7 +205,7 @@ export function RoomsTab({ config, data, loading, role, onRefresh, onNavigate }:
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {rooms.map((r: any, i: number) => {
+        {sortedRooms.map((r: any, i: number) => {
           const badges = getRoomBadges(r);
           return (
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }} key={r.id}

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Trash2, CheckCircle2, Loader2, FileText, Pencil } from 'lucide-react';
+import { Plus, Trash2, CheckCircle2, Loader2, FileText, Pencil, ArrowUpDown, ChevronUp, ChevronDown } from 'lucide-react';
 import type { AppConfig, DashboardData, UserRole } from '../lib/api';
 import { API, downloadBase64Pdf } from '../lib/api';
 import { Badge } from './ui/Badge';
@@ -32,13 +32,63 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
   const [completeItem, setCompleteItem] = useState<any>(null);
   const [completeReceiver, setCompleteReceiver] = useState('');
   const [completeMethod, setCompleteMethod] = useState('Tiền mặt');
+  const [sortBy, setSortBy] = useState<string>('date');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   if (loading) return <div className="flex h-64 items-center justify-center"><Loader2 className="animate-spin text-indigo-500" size={32} /></div>;
   if (!data) return null;
 
   const isAdmin = role === 'admin';
-  const payments = [...data.payments].reverse();
+  const rawPayments = data.payments;
   const receivers = getReceivers(data.settings);
+
+  const getRoomName = (contractId: string) => {
+    const c = data.contracts_all.find((c: any) => c.id === contractId);
+    if (!c) return contractId;
+    const r = data.rooms.find((r: any) => r.id === c.room_id);
+    return r ? r.name : c.room_id;
+  };
+
+  const sortedPayments = [...rawPayments].sort((a, b) => {
+    let valA, valB;
+    if (sortBy === 'room_name') {
+      valA = getRoomName(a.contract_id).toLowerCase();
+      valB = getRoomName(b.contract_id).toLowerCase();
+    } else if (sortBy === 'amount') {
+      valA = Number(a.amount) || 0;
+      valB = Number(b.amount) || 0;
+    } else if (sortBy === 'date') {
+      // Date format is DD/MM/YYYY, convert to YYYYMMDD for comparison
+      const parseDate = (d: string) => {
+        const parts = (d || '').split('/');
+        if (parts.length === 3) return parts[2] + parts[1] + parts[0];
+        return '0';
+      };
+      valA = parseDate(a.date);
+      valB = parseDate(b.date);
+    } else {
+      valA = String(a[sortBy] || '').toLowerCase();
+      valB = String(b[sortBy] || '').toLowerCase();
+    }
+
+    if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+    if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  const toggleSort = (key: string) => {
+    if (sortBy === key) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(key);
+      setSortOrder(key === 'amount' || key === 'date' ? 'desc' : 'asc');
+    }
+  };
+
+  const SortIcon = ({ col }: { col: string }) => {
+    if (sortBy !== col) return <ArrowUpDown size={12} className="ml-1 opacity-20 group-hover:opacity-50" />;
+    return sortOrder === 'asc' ? <ChevronUp size={12} className="ml-1 text-indigo-500" /> : <ChevronDown size={12} className="ml-1 text-indigo-500" />;
+  };
 
 
   // ─── Actions ────────────────────────────────────────────
@@ -173,20 +223,20 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
           <table className="w-full text-left text-sm">
             <thead className="bg-slate-50 text-slate-500">
               <tr>
-                <th className="px-4 py-3 font-medium">HĐ / Phòng</th>
-                <th className="px-4 py-3 font-medium">Loại GD</th>
-                <th className="px-4 py-3 font-medium">Kỳ</th>
-                <th className="px-4 py-3 font-medium">Số tiền</th>
-                <th className="px-4 py-3 font-medium">Ngày</th>
-                <th className="px-4 py-3 font-medium">Người nhận</th>
-                <th className="px-4 py-3 font-medium">Hình thức</th>
-                <th className="px-4 py-3 font-medium">Trạng thái</th>
+                <th onClick={() => toggleSort('room_name')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">HĐ / Phòng <SortIcon col="room_name" /></div></th>
+                <th onClick={() => toggleSort('payment_type')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">Loại GD <SortIcon col="payment_type" /></div></th>
+                <th onClick={() => toggleSort('payment_period')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">Kỳ <SortIcon col="payment_period" /></div></th>
+                <th onClick={() => toggleSort('amount')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">Số tiền <SortIcon col="amount" /></div></th>
+                <th onClick={() => toggleSort('date')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">Ngày <SortIcon col="date" /></div></th>
+                <th onClick={() => toggleSort('receiver')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">Người nhận <SortIcon col="receiver" /></div></th>
+                <th onClick={() => toggleSort('method')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">Hình thức <SortIcon col="method" /></div></th>
+                <th onClick={() => toggleSort('status')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">Trạng thái <SortIcon col="status" /></div></th>
                 <th className="px-4 py-3 font-medium">Ghi chú</th>
                 {isAdmin && <th className="px-4 py-3 font-medium">Thao tác</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {payments.map((p: any) => (
+              {sortedPayments.map((p: any) => (
                 <motion.tr key={p.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="hover:bg-slate-50/50 transition-colors">
                   <td className="px-4 py-3">
                     <div className="font-medium text-slate-900 text-xs">{getRoom(p.contract_id)}</div>
@@ -241,7 +291,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
                   )}
                 </motion.tr>
               ))}
-              {payments.length === 0 && <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-400">Chưa có giao dịch nào</td></tr>}
+              {sortedPayments.length === 0 && <tr><td colSpan={10} className="px-4 py-8 text-center text-slate-400">Chưa có giao dịch nào</td></tr>}
             </tbody>
           </table>
         </div>

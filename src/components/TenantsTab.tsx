@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Pencil, Trash2, Loader2, Search } from 'lucide-react';
+import { Plus, Pencil, Trash2, Loader2, Search, ArrowUpDown, ChevronUp, ChevronDown } from 'lucide-react';
 import type { AppConfig, DashboardData, UserRole } from '../lib/api';
 import { API } from '../lib/api';
 import { Modal } from './ui/Modal';
@@ -24,6 +24,8 @@ export function TenantsTab({ config, data, loading, role, onRefresh }: Props) {
   const [saving, setSaving] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [sortBy, setSortBy] = useState<string>('room_id');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
   if (loading) return <div className="flex h-64 items-center justify-center"><Loader2 className="animate-spin text-indigo-500" size={32} /></div>;
   if (!data) return null;
@@ -34,6 +36,41 @@ export function TenantsTab({ config, data, loading, role, onRefresh }: Props) {
     const q = search.toLowerCase();
     return (t.name || '').toLowerCase().includes(q) || (t.room_id || '').toLowerCase().includes(q) || (t.phone || '').includes(q) || (t.cccd || '').includes(q);
   });
+
+  const sortedTenants = [...tenants].sort((a, b) => {
+    let valA = a[sortBy], valB = b[sortBy];
+    
+    valA = String(valA || '').toLowerCase();
+    valB = String(valB || '').toLowerCase();
+    
+    // Numerical sort for room_id
+    if (sortBy === 'room_id') {
+      const numA = parseInt(valA.replace(/\D/g, ''));
+      const numB = parseInt(valB.replace(/\D/g, ''));
+      if (!isNaN(numA) && !isNaN(numB)) {
+        valA = numA;
+        valB = numB;
+      }
+    }
+
+    if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+    if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  const toggleSort = (key: string) => {
+    if (sortBy === key) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(key);
+      setSortOrder('asc');
+    }
+  };
+
+  const SortIcon = ({ col }: { col: string }) => {
+    if (sortBy !== col) return <ArrowUpDown size={12} className="ml-1 opacity-20 group-hover:opacity-50" />;
+    return sortOrder === 'asc' ? <ChevronUp size={12} className="ml-1 text-indigo-500" /> : <ChevronDown size={12} className="ml-1 text-indigo-500" />;
+  };
 
   const openCreate = () => {
     setEditItem(null);
@@ -103,17 +140,17 @@ export function TenantsTab({ config, data, loading, role, onRefresh }: Props) {
           <table className="w-full text-left text-sm">
             <thead className="bg-slate-50 text-slate-500">
               <tr>
-                <th className="px-4 py-3 font-medium">Phòng</th>
-                <th className="px-4 py-3 font-medium">Họ tên</th>
-                <th className="px-4 py-3 font-medium">SĐT</th>
-                <th className="px-4 py-3 font-medium">CCCD</th>
-                <th className="px-4 py-3 font-medium">Ngày sinh</th>
-                <th className="px-4 py-3 font-medium">Địa chỉ</th>
+                <th onClick={() => toggleSort('room_id')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">Phòng <SortIcon col="room_id" /></div></th>
+                <th onClick={() => toggleSort('name')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">Họ tên <SortIcon col="name" /></div></th>
+                <th onClick={() => toggleSort('phone')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">SĐT <SortIcon col="phone" /></div></th>
+                <th onClick={() => toggleSort('cccd')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">CCCD <SortIcon col="cccd" /></div></th>
+                <th onClick={() => toggleSort('dob')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">Ngày sinh <SortIcon col="dob" /></div></th>
+                <th onClick={() => toggleSort('address')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">Địa chỉ <SortIcon col="address" /></div></th>
                 {isAdmin && <th className="px-4 py-3 font-medium">Thao tác</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {tenants.map((t: any) => (
+              {sortedTenants.map((t: any) => (
                 <motion.tr key={t.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="hover:bg-slate-50/50 transition-colors">
                   <td className="px-4 py-3 font-medium">{t.room_id}</td>
                   <td className="px-4 py-3 font-medium text-slate-900">{t.name}</td>
@@ -131,7 +168,7 @@ export function TenantsTab({ config, data, loading, role, onRefresh }: Props) {
                   )}
                 </motion.tr>
               ))}
-              {tenants.length === 0 && (
+              {sortedTenants.length === 0 && (
                 <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-400">Không có khách thuê nào</td></tr>
               )}
             </tbody>
