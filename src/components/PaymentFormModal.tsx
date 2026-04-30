@@ -191,7 +191,12 @@ export function PaymentFormModal({
     const fields = applyExpectedFields(exp);
     // Don't overwrite new_electric during recalculation
     delete (fields as any).new_electric;
-    setForm(prev => ({ ...prev, start_date: val, ...fields }));
+    setForm(prev => ({ 
+      ...prev, 
+      start_date: val, 
+      payment_period: val.split('/').slice(1).join('/'),
+      ...fields 
+    }));
   };
 
   const handlePeopleCountChange = (val: number) => {
@@ -217,6 +222,7 @@ export function PaymentFormModal({
     setForm(prev => ({ 
       ...prev, 
       start_date: newStartDate, 
+      payment_period: newStartDate.split('/').slice(1).join('/'),
       ...applyExpectedFields(exp) 
     }));
   };
@@ -314,7 +320,7 @@ export function PaymentFormModal({
         days_stayed: form.days_stayed || expResult.daysStayed,
         days_in_month: expResult.daysInMonth,
         deposit_paid: form.deposit_paid,
-        payment_period: form.start_date ? form.start_date.split('/').slice(1).join('/') : '',
+        payment_period: form.payment_period || (form.start_date ? form.start_date.split('/').slice(1).join('/') : ''),
         payment_type: (() => {
           const inc = form.included_fields || [];
           const hasDeposit = inc.includes('deposit_fee');
@@ -379,7 +385,7 @@ export function PaymentFormModal({
           electric_fee: exp.electricFee,
           deposit_fee: exp.deposit, // Use the full deposit needed
           deposit_paid: depositPaid, // But show how much is paid
-          payment_period: form.start_date ? form.start_date.split('/').slice(1).join('/') : '',
+          payment_period: form.payment_period || (form.start_date ? form.start_date.split('/').slice(1).join('/') : ''),
           old_electric: exp.oldElectric,
           new_electric: exp.oldElectric,
           discount: exp.discount,
@@ -643,33 +649,41 @@ export function PaymentFormModal({
 
           {/* Days Proration & Main Monthly Fees */}
           <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-4">
-            <div className="flex items-end gap-3">
-              <div className="flex-1">
-                <label className="block text-xs font-medium text-slate-600 mb-1">Số ngày tính phí (Prorate)</label>
+            <div className="grid grid-cols-1 sm:grid-cols-3 items-end gap-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Số ngày tính phí</label>
                 <div className="flex items-center gap-2">
                   {form.days_stayed === form.days_in_month ? (
-                    <div className="w-20 bg-white border border-indigo-200 text-indigo-700 font-bold rounded-xl px-3 py-2 text-sm">1 tháng</div>
+                    <div className="flex-1 bg-white border border-indigo-200 text-indigo-700 font-bold rounded-xl px-3 py-2 text-sm">1 tháng</div>
                   ) : (
                     <input id="input-prorate-days" type="number" value={form.days_stayed} onChange={e => handleDaysChange(Number(e.target.value) || 0)}
                       inputMode="numeric"
-                      className="w-20 bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
                   )}
-                  <span className="text-slate-500 font-medium text-sm">/ tháng</span>
                   {form.days_stayed === form.days_in_month && (
-                    <button onClick={() => handleDaysChange(form.days_in_month - 1)} className="text-[10px] text-indigo-600 font-medium hover:underline">Sửa số ngày</button>
+                    <button onClick={() => handleDaysChange(form.days_in_month - 1)} className="text-[10px] text-indigo-600 font-medium hover:underline">Sửa</button>
                   )}
                 </div>
               </div>
-              <div className="flex-1">
-                <label className="block text-xs font-medium text-slate-600 mb-1">Tính từ ngày</label>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Tính từ ngày / Tháng sau?</label>
                 <div className="flex items-center gap-2">
                   <div className="flex-1"><DatePickerInput value={form.start_date || ''} onChange={handleStartDateChange} /></div>
                   <button 
                     onClick={toggleNextMonth}
                     className={`px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all border ${isNextMonth ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-200 text-indigo-600 hover:bg-indigo-50'}`}>
-                    {isNextMonth ? 'Tới tháng sau ✅' : 'Tháng sau?'}
+                    {isNextMonth ? '✅' : '>>'}
                   </button>
                 </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Kỳ thanh toán (MM/YYYY)</label>
+                <input 
+                  value={form.payment_period} 
+                  onChange={e => F('payment_period', e.target.value)}
+                  placeholder="MM/YYYY"
+                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" 
+                />
               </div>
             </div>
 

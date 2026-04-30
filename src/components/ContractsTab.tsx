@@ -30,6 +30,7 @@ interface ContractForm {
   phone: string;
   cccd: string;
   people_count: number | string;
+  children_count: number | string;
   move_in_date: string;
   start_date: string;
   duration: number;
@@ -43,7 +44,7 @@ interface ContractForm {
 }
 
 const makeEmptyForm = (): ContractForm => ({
-  room_id: '', tenant: '', phone: '', cccd: '', people_count: 1,
+  room_id: '', tenant: '', phone: '', cccd: '', people_count: 1, children_count: 0,
   move_in_date: todayStr(), start_date: '', duration: 1, rent: 0, deposit: 0,
   start_electric: 0, discount: 0, extra_person_fee: 0, note: '', end_date: '',
 });
@@ -153,7 +154,8 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
     setEditItem(c);
     setForm({
       room_id: String(c.room_id || ''), tenant: String(c.tenant || ''), phone: String(c.phone || ''), cccd: tenantCccd,
-      people_count: c.people_count || 1, move_in_date: String(c.move_in_date || c.start_date || ''), start_date: String(c.start_date || ''), duration: durationMonths,
+      people_count: c.people_count || 1, children_count: c.children_count || 0,
+      move_in_date: String(c.move_in_date || c.start_date || ''), start_date: String(c.start_date || ''), duration: durationMonths,
       rent: c.rent || 0, deposit: c.deposit || 0, start_electric: c.start_electric || 0,
       discount: c.discount || 0, extra_person_fee: c.extra_person_fee || 0, note: String(c.note || ''), end_date: c.end_date || '',
     });
@@ -195,9 +197,13 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
     setSaveError('');
     try {
       if (editItem) {
-        const payload: any = { ...form, deposit: form.rent, people_count: Math.max(1, Number(form.people_count) || 1) };
-        delete payload.cccd;
-        await API.updateContract(config, editItem.id, { ...payload, extra_person_fee: form.extra_person_fee });
+        const payload: any = { 
+          ...form, 
+          deposit: form.rent, 
+          people_count: Math.max(1, Number(form.people_count) || 1),
+          extra_person_fee: form.extra_person_fee 
+        };
+        await API.updateContract(config, editItem.id, payload);
       } else {
         await API.createContract(config, { ...form, deposit: form.rent, people_count: Math.max(1, Number(form.people_count) || 1), extra_person_fee: form.extra_person_fee });
       }
@@ -351,6 +357,12 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Số người ở</label>
             <input id="input-contract-people" type="number" value={form.people_count} onChange={e => F('people_count', e.target.value)} min={1} inputMode="numeric"
+              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
+          </div>
+          {/* Children count */}
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Trẻ em dưới 8 tuổi</label>
+            <input id="input-contract-children" type="number" value={form.children_count} onChange={e => F('children_count', e.target.value)} min={0} inputMode="numeric"
               className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
           </div>
           {/* Move-in date */}

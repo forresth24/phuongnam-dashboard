@@ -101,6 +101,7 @@ export const makeEmptyPaymentForm = (defaultDuration: number = 12): PaymentFormD
   old_electric: 0, new_electric: 0,
   previous_debt: 0,
   deposit_paid: 0,
+  payment_period: firstDayOfMonthStr().split('/').slice(1).join('/'),
 });
 
 // ─── Expected Amount Calculation ──────────────────────────
