@@ -356,6 +356,17 @@ export function sumBreakdown(form: PaymentFormData): number {
   return Math.max(0, roundUp10k(finalSum));
 }
 
+/** Determine the payment type label based on included fields */
+export function getPaymentTypeLabel(includedFields: string[]): string {
+  const inc = includedFields || [];
+  const hasDeposit = inc.includes('deposit_fee');
+  const hasMonthly = inc.some(f => ['base_rent', 'water_fee', 'living_fee', 'electric_fee', 'extra_person_fee'].includes(f));
+  
+  if (hasDeposit && hasMonthly) return 'Thu tiền tháng + Cọc';
+  if (hasDeposit) return 'Tiền cọc';
+  return 'Thu tiền tháng';
+}
+
 /** Update form with new expected amounts from calculateExpectedAmount */
 export function applyExpectedToForm(form: PaymentFormData, exp: ExpectedAmountResult): PaymentFormData {
   let included = form.included_fields && form.included_fields.length > 0

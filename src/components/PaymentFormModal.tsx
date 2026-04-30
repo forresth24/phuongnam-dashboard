@@ -10,7 +10,7 @@ import { getReceivers, autoPaymentStatus, getContractMonthRange } from '../lib/s
 import {
   formatVND, todayStr, firstDayOfMonthStr, roundUp10k,
   calculateExpectedAmount, validatePaymentForm, sumBreakdown,
-  makeEmptyPaymentForm,
+  makeEmptyPaymentForm, getPaymentTypeLabel,
   type PaymentFormData, type PaymentFieldError,
 } from '../lib/payment-utils';
 
@@ -321,14 +321,7 @@ export function PaymentFormModal({
         days_in_month: expResult.daysInMonth,
         deposit_paid: form.deposit_paid,
         payment_period: form.payment_period || (form.start_date ? form.start_date.split('/').slice(1).join('/') : ''),
-        payment_type: (() => {
-          const inc = form.included_fields || [];
-          const hasDeposit = inc.includes('deposit_fee');
-          const hasMonthly = inc.some(f => ['base_rent', 'water_fee', 'living_fee', 'electric_fee'].includes(f));
-          if (hasDeposit && hasMonthly) return 'Thu tiền tháng + Cọc';
-          if (hasDeposit) return 'Tiền cọc';
-          return 'Thu tiền tháng';
-        })(),
+        payment_type: getPaymentTypeLabel(form.included_fields || []),
       };
 
       if (editItem) {
@@ -404,14 +397,7 @@ export function PaymentFormModal({
         // Let's create a temporary payment or use an API that can handle this.
         // For now, let's create a "Chưa nhận" payment to get an ID.
         
-        const dynamicType = (() => {
-          const inc = roomForm.included_fields || [];
-          const hasDeposit = inc.includes('deposit_fee');
-          const hasMonthly = inc.some(f => ['base_rent', 'water_fee', 'living_fee', 'electric_fee'].includes(f));
-          if (hasDeposit && hasMonthly) return 'Thu tiền tháng + Cọc';
-          if (hasDeposit) return 'Tiền cọc';
-          return 'Thu tiền tháng';
-        })();
+        const dynamicType = getPaymentTypeLabel(roomForm.included_fields || []);
 
         const res = await API.createPayment(config, {
           ...roomForm,
@@ -838,7 +824,7 @@ export function PaymentFormModal({
             className={`w-full text-white py-2.5 rounded-xl font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2 ${isNoticeMode ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
             {(saving || pendingSubmit) && <Loader2 size={16} className="animate-spin" />}
             {isNoticeMode ? <ScrollText size={18} /> : <Banknote size={18} />} 
-            {isNoticeMode ? `Xuất ${selectedRoomIds.length} thông báo` : (editItem ? 'Cập nhật' : (needsNewContract ? 'Tạo HĐ + Thu tiền' : 'Thu tiền'))}
+            {isNoticeMode ? `Xuất ${selectedRoomIds.length} thông báo` : (editItem ? 'Cập nhật' : (form.receiver === 'Chưa nhận' ? 'Tạo thông báo thu tiền' : (needsNewContract ? 'Tạo HĐ + Thu tiền' : 'Thu tiền')))}
           </button>
         </div>
       </Modal>
