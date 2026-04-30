@@ -614,7 +614,7 @@ export function PaymentFormModal({
                 </div>
 
                 <div className={(!needsNewContract && !isContractEditable) ? 'opacity-70' : ''}>
-                  <label className="block text-[10px] uppercase font-bold text-rose-500 mb-1">Chiết khấu</label>
+                  <label className="block text-[10px] uppercase font-bold text-rose-500 mb-1">Chiết khấu DV</label>
                   <input id="input-breakdown-discount" type="number" value={form.discount} 
                     disabled={!needsNewContract && !isContractEditable}
                     onChange={e => handleBreakdownChange('discount', Number(e.target.value))}

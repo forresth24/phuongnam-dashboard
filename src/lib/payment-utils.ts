@@ -337,7 +337,7 @@ export function sumBreakdown(form: PaymentFormData): number {
   const fields = form.included_fields || [];
   let sum = 0;
   if (fields.includes('base_rent')) sum += (Number(form.base_rent) || 0);
-  if (fields.includes('extra_person_fee')) sum += (Number(form.extra_person_fee) || 0);
+  // if (fields.includes('extra_person_fee')) sum += (Number(form.extra_person_fee) || 0);
   if (fields.includes('living_fee')) sum += (Number(form.living_fee) || 0);
   if (fields.includes('water_fee')) sum += (Number(form.water_fee) || 0);
   if (fields.includes('electric_fee')) sum += (Number(form.electric_fee) || 0);
@@ -349,8 +349,11 @@ export function sumBreakdown(form: PaymentFormData): number {
   sum += (Number(form.previous_debt) || 0);
   
   let finalSum = sum;
-  if (fields.includes('base_rent')) {
-    finalSum -= (Number(form.discount) || 0);
+  if (
+    (fields.includes('living_fee') || fields.includes('water_fee')) 
+    && Number(form.discount) > 0
+  ) {
+    finalSum -= Number(form.discount);
   }
   
   return Math.max(0, roundUp10k(finalSum));

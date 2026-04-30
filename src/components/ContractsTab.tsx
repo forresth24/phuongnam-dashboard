@@ -407,7 +407,7 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
           </div>
           {/* Discount */}
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Chiết khấu/tháng</label>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Chiết khấu DV/tháng</label>
             <input id="input-contract-discount" type="number" value={form.discount} onChange={e => F('discount', Number(e.target.value))}
               inputMode="numeric" step="1000"
               className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
