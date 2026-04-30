@@ -139,7 +139,7 @@ export function RoomsTab({ config, data, loading, role, onRefresh, onNavigate }:
   const { month, year } = getCurrentMonthYear();
   const detailContract = detailRoom ? getActiveContract(detailRoom) : null;
   const detailTenants = detailRoom ? data.tenants.filter((t: any) => String(t.room_id).trim() === String(detailRoom).trim()) : [];
-  const detailRoomObj = detailRoom ? rooms.find((r: any) => r.id === detailRoom) : null;
+  const detailRoomObj = detailRoom ? rooms.find((r: any) => String(r.id) === String(detailRoom)) : null;
 
   return (
     <div className="space-y-6">

@@ -463,7 +463,7 @@ export function PaymentFormModal({
   const RequiredStar = () => <span className="text-rose-500 ml-0.5">*</span>;
   const FieldErr = ({ msg }: { msg?: string }) => msg && msg.trim() ? <p className="text-rose-500 text-[11px] mt-0.5">{msg}</p> : null;
 
-  const payRoomObj = form.room_id ? data.rooms.find((r: any) => r.id === form.room_id) : null;
+  const payRoomObj = form.room_id ? data.rooms.find((r: any) => String(r.id) === String(form.room_id)) : null;
   const expResult = form.room_id ? calcExpected() : null;
 
   const modalTitle = isNoticeMode 

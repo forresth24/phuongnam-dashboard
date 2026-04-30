@@ -136,7 +136,7 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
   };
 
   const onRoomChange = (roomId: string) => {
-    const room = data.rooms.find((r: any) => r.id === roomId);
+    const room = data.rooms.find((r: any) => String(r.id) === String(roomId));
     const price = room ? Number(room.price) || 0 : 0;
     const settings = data.settings;
     const peopleCount = Number(form.people_count) || 1;
