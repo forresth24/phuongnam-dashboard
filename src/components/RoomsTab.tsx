@@ -137,6 +137,7 @@ export function RoomsTab({ config, data, loading, role, onRefresh, onNavigate }:
       days_in_month: exp.daysInMonth,
       old_electric: exp.oldElectric,
       new_electric: exp.oldElectric,
+      electric_usage: 0,
     };
   };
 

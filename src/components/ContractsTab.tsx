@@ -10,7 +10,7 @@ import { DatePickerInput } from './ui/DatePickerInput';
 import { getContractMonthRange } from '../lib/settings-helpers';
 import { roundUp10k } from '../lib/payment-utils';
 
-const formatVND = (n: number) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(n);
+const formatVND = (n: number) => new Intl.NumberFormat('en-US').format(n) + ' VND';
 const todayStr = () => {
   const d = new Date();
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;

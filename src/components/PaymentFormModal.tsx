@@ -250,7 +250,7 @@ export function PaymentFormModal({
     // If old electric is 0, it means it's a new contract or reading not yet recorded
     const fee = nextForm.old_electric === 0 ? 0 : roundUp10k(diff * unitPrice);
     
-    const finalForm = { ...nextForm, electric_fee: fee };
+    const finalForm = { ...nextForm, electric_fee: fee, electric_usage: diff };
     setForm({ ...finalForm, amount: sumBreakdown(finalForm) });
   };
 
@@ -316,6 +316,7 @@ export function PaymentFormModal({
         electric_total: form.electric_fee,
         old_electric: form.old_electric,
         new_electric: form.new_electric,
+        electric_usage: Math.max(0, form.new_electric - form.old_electric),
         deposit_fee: form.deposit_fee,
         days_stayed: form.days_stayed || expResult.daysStayed,
         days_in_month: expResult.daysInMonth,
@@ -381,6 +382,7 @@ export function PaymentFormModal({
           payment_period: form.payment_period || (form.start_date ? form.start_date.split('/').slice(1).join('/') : ''),
           old_electric: exp.oldElectric,
           new_electric: exp.oldElectric,
+          electric_usage: 0,
           discount: exp.discount,
           amount: 0, // Not needed for notice
           receiver: 'Chưa nhận',

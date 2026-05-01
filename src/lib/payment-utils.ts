@@ -6,7 +6,7 @@ import type { DashboardData } from './api';
 // ─── Utilities ────────────────────────────────────────────
 
 export const formatVND = (amount: number) =>
-  new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
+  new Intl.NumberFormat('en-US').format(amount) + ' VND';
 
 export const roundUp10k = (amount: number) => Math.ceil(amount / 10000) * 10000;
 export const roundUp5k = (amount: number) => Math.ceil(amount / 5000) * 5000;
@@ -71,6 +71,7 @@ export interface PaymentFormData {
   days_in_month: number;
   old_electric: number;
   new_electric: number;
+  electric_usage: number;
   previous_debt: number;
   deposit_paid: number;
   payment_period?: string;
@@ -98,7 +99,7 @@ export const makeEmptyPaymentForm = (defaultDuration: number = 12): PaymentFormD
   base_rent: 0, extra_person_fee: 0, living_fee: 0, water_fee: 0, electric_fee: 0, deposit_fee: 0,
   included_fields: ['base_rent', 'extra_person_fee', 'living_fee', 'water_fee', 'electric_fee'],
   days_stayed: 30, days_in_month: 30,
-  old_electric: 0, new_electric: 0,
+  old_electric: 0, new_electric: 0, electric_usage: 0,
   previous_debt: 0,
   deposit_paid: 0,
   payment_period: firstDayOfMonthStr().split('/').slice(1).join('/'),
@@ -391,6 +392,7 @@ export function applyExpectedToForm(form: PaymentFormData, exp: ExpectedAmountRe
     discount: exp.discount,
     old_electric: exp.oldElectric,
     new_electric: exp.oldElectric, // Default same as old
+    electric_usage: 0,
     included_fields: included,
     days_stayed: exp.daysStayed,
     days_in_month: exp.daysInMonth,
