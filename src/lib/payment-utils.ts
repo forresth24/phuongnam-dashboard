@@ -5,8 +5,8 @@ import type { DashboardData } from './api';
 
 // ─── Utilities ────────────────────────────────────────────
 
-export const formatVND = (amount: number) =>
-  new Intl.NumberFormat('en-US').format(amount) + ' VND';
+export const formatVND = (amount: number, showSuffix: boolean = true) =>
+  new Intl.NumberFormat('en-US').format(amount) + (showSuffix ? ' VND' : '');
 
 export const roundUp10k = (amount: number) => Math.ceil(amount / 10000) * 10000;
 export const roundUp5k = (amount: number) => Math.ceil(amount / 5000) * 5000;
@@ -179,16 +179,16 @@ export function calculateExpectedAmount(
     }
   }
 
-  const livingFee = waterPrice * peopleCount;
-  const totalInternetSurcharge = internetSurcharge * peopleCount;
-  const totalElectricFee = electricPrice * peopleCount;
   let discount = 0;
   if (contract) {
     discount = Number(contract.discount);
   }
+  const livingFee = waterPrice * peopleCount;
+  const totalInternetSurcharge = internetSurcharge * peopleCount - discount;
+  const totalElectricFee = electricPrice * peopleCount;
 
   // Tiền cọc = Giá phòng + Phụ thu quá người - Giảm giá
-  const deposit = basePrice + extraPersonFee - discount;
+  const deposit = basePrice + extraPersonFee;
 
   let daysStayed = 0;
   let daysInMonth = 30;
@@ -282,7 +282,7 @@ export function calculateExpectedAmount(
 
   // Recommended total: only include deposit if it's a new contract (Thu cọc)
   const recommendedDeposit = isNewContract ? deposit : 0;
-  const total = res.basePrice + res.extraPersonFee + res.livingFee + res.internetSurcharge + res.electricFee + recommendedDeposit - res.discount;
+  const total = res.basePrice + res.extraPersonFee + res.livingFee + res.internetSurcharge + res.electricFee + recommendedDeposit;
   const roundedTotal = total > 0 ? roundUp10k(total) : 0;
 
   return {
@@ -339,9 +339,9 @@ export function sumBreakdown(form: PaymentFormData): number {
   let sum = 0;
   if (fields.includes('base_rent')) sum += (Number(form.base_rent) || 0);
   // if (fields.includes('extra_person_fee')) sum += (Number(form.extra_person_fee) || 0);
-  if (fields.includes('living_fee')) sum += (Number(form.living_fee) || 0);
-  if (fields.includes('water_fee')) sum += (Number(form.water_fee) || 0);
-  if (fields.includes('electric_fee')) sum += (Number(form.electric_fee) || 0);
+  if (fields.includes('living_fee')) sum += roundUp5k(Number(form.living_fee) || 0);
+  if (fields.includes('water_fee')) sum += roundUp5k(Number(form.water_fee) || 0);
+  if (fields.includes('electric_fee')) sum += roundUp5k(Number(form.electric_fee) || 0);
   if (fields.includes('deposit_fee')) {
     const totalDepositNeeded = Number(form.deposit_fee) || 0;
     const alreadyPaid = Number(form.deposit_paid) || 0;
@@ -349,15 +349,7 @@ export function sumBreakdown(form: PaymentFormData): number {
   }
   sum += (Number(form.previous_debt) || 0);
   
-  let finalSum = sum;
-  if (
-    (fields.includes('living_fee') || fields.includes('water_fee')) 
-    && Number(form.discount) > 0
-  ) {
-    finalSum -= Number(form.discount);
-  }
-  
-  return Math.max(0, roundUp10k(finalSum));
+  return Math.max(0, roundUp10k(sum));
 }
 
 /** Determine the payment type label based on included fields */

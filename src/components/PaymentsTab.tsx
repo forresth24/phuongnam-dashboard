@@ -194,6 +194,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
       electric_usage: Number(p.electric_usage) || (Math.max(0, (Number(p.new_electric) || 0) - (Number(p.old_electric) || 0))),
       previous_debt: Number(p.previous_debt) || Number(p['nợ kỳ trước']) || 0,
       deposit_paid: Number(p.deposit_paid) || 0,
+      payment_period: p.payment_period || (p.date ? p.date.split('/').slice(1).join('/') : ''),
     });
     setModalOpen(true);
   };
