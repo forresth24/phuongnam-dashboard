@@ -183,8 +183,18 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
     const depositFee = Number(p.deposit_fee) || Number(p['tiền cọc']) || 0;
     const discount = Number(p.discount_applied) || Number(p['chiết khấu']) || Number(p['giảm giá']) || Number(p['chiết khấu/tháng']) || Number(p['discount']) || 0;
 
-    const included = ['base_rent', 'extra_person_fee', 'living_fee', 'water_fee', 'electric_fee'];
-    if (depositFee > 0) included.push('deposit_fee');
+    const pType = String(p.payment_type || '').toLowerCase();
+    const included = [];
+    if (pType.includes('tháng') || pType.includes('phòng') || pType === '') {
+      included.push('base_rent', 'extra_person_fee', 'living_fee', 'water_fee', 'electric_fee');
+    }
+    if (pType.includes('cọc')) {
+      included.push('deposit_fee');
+    }
+    // Fallback if no known type
+    if (included.length === 0) {
+      included.push('base_rent', 'extra_person_fee', 'living_fee', 'water_fee', 'electric_fee');
+    }
 
     setInitialForm({
       room_id: contract ? contract.room_id : '',
