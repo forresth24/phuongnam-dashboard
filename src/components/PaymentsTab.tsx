@@ -32,7 +32,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
   const [completeItem, setCompleteItem] = useState<any>(null);
   const [completeReceiver, setCompleteReceiver] = useState('');
   const [completeMethod, setCompleteMethod] = useState('Tiền mặt');
-  const [sortBy, setSortBy] = useState<string>('date');
+  const [sortBy, setSortBy] = useState<string>('updated_at');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   if (loading) return <div className="flex h-64 items-center justify-center"><Loader2 className="animate-spin text-indigo-500" size={32} /></div>;
@@ -49,23 +49,50 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
     return r ? r.name : c.room_id;
   };
 
+  const getRoomData = (contractId: string) => {
+    const c = data.contracts_all.find((c: any) => c.id === contractId);
+    if (!c) return null;
+    return data.rooms.find((r: any) => r.id === c.room_id);
+  };
+
+  const getFloor = (contractId: string) => {
+    const r = getRoomData(contractId);
+    if (!r) return '';
+    const match = (r.name || r.id).match(/\d/);
+    return match ? match[0] : '';
+  };
+
   const sortedPayments = [...rawPayments].sort((a, b) => {
     let valA, valB;
     if (sortBy === 'room_name') {
       valA = getRoomName(a.contract_id).toLowerCase();
       valB = getRoomName(b.contract_id).toLowerCase();
+    } else if (sortBy === 'floor') {
+      valA = getFloor(a.contract_id);
+      valB = getFloor(b.contract_id);
     } else if (sortBy === 'amount') {
       valA = Number(a.amount) || 0;
       valB = Number(b.amount) || 0;
-    } else if (sortBy === 'date') {
-      // Date format is DD/MM/YYYY, convert to YYYYMMDD for comparison
+    } else if (sortBy === 'date' || sortBy === 'updated_at') {
       const parseDate = (d: string) => {
-        const parts = (d || '').split('/');
+        if (!d) return '0';
+        // Handle ISO-like dates (2026-04-01T10:00:00) or DD/MM/YYYY
+        if (d.includes('T')) return d;
+        const parts = d.split('/');
         if (parts.length === 3) return parts[2] + parts[1] + parts[0];
-        return '0';
+        return d;
       };
-      valA = parseDate(a.date);
-      valB = parseDate(b.date);
+      valA = parseDate(a[sortBy]);
+      valB = parseDate(b[sortBy]);
+    } else if (sortBy === 'payment_period') {
+      const parsePeriod = (p: string) => {
+        if (!p) return '0';
+        const parts = p.split('/');
+        if (parts.length === 2) return parts[1] + parts[0]; // MM/YYYY -> YYYYMM
+        return p;
+      };
+      valA = parsePeriod(a.payment_period || (a.date ? a.date.split('/').slice(1).join('/') : ''));
+      valB = parsePeriod(b.payment_period || (b.date ? b.date.split('/').slice(1).join('/') : ''));
     } else {
       valA = String(a[sortBy] || '').toLowerCase();
       valB = String(b[sortBy] || '').toLowerCase();
@@ -226,10 +253,12 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
             <thead className="bg-slate-50 text-slate-500">
               <tr>
                 <th onClick={() => toggleSort('room_name')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">HĐ / Phòng <SortIcon col="room_name" /></div></th>
+                <th onClick={() => toggleSort('floor')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">Tầng <SortIcon col="floor" /></div></th>
                 <th onClick={() => toggleSort('payment_type')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">Loại GD <SortIcon col="payment_type" /></div></th>
                 <th onClick={() => toggleSort('payment_period')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">Kỳ <SortIcon col="payment_period" /></div></th>
                 <th onClick={() => toggleSort('amount')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">Số tiền <SortIcon col="amount" /></div></th>
                 <th onClick={() => toggleSort('date')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">Ngày <SortIcon col="date" /></div></th>
+                <th onClick={() => toggleSort('updated_at')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group whitespace-nowrap"><div className="flex items-center">Lần sửa cuối <SortIcon col="updated_at" /></div></th>
                 <th onClick={() => toggleSort('receiver')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">Người nhận <SortIcon col="receiver" /></div></th>
                 <th onClick={() => toggleSort('method')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">Hình thức <SortIcon col="method" /></div></th>
                 <th onClick={() => toggleSort('status')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">Trạng thái <SortIcon col="status" /></div></th>
@@ -244,13 +273,21 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
                     <div className="font-medium text-slate-900 text-xs">{getRoom(p.contract_id)}</div>
                     <div className="text-[10px] text-slate-400 font-mono">{p.contract_id}</div>
                   </td>
+                  <td className="px-4 py-3 text-center text-xs text-slate-600">
+                    {getFloor(p.contract_id)}
+                  </td>
                   <td className="px-4 py-3 min-w-[130px]">
                     <span className="block text-sm">{p.payment_type || 'Tiền phòng'}</span>
                     {String(p.is_partial).toUpperCase() === 'TRUE' && <Badge variant="danger" className="mt-1">Trả thiếu</Badge>}
                   </td>
                   <td className="px-4 py-3">
                     <span className="text-xs font-medium text-slate-600">
-                      {p.payment_period || (p.date ? p.date.split('/').slice(1).join('/') : '—')}
+                      {(function() {
+                        const pStr = p.payment_period || p.date || '';
+                        const parts = pStr.split('/');
+                        if (parts.length === 3) return parts[1] + '/' + parts[2];
+                        return pStr || '—';
+                      })()}
                     </span>
                   </td>
                   <td className="px-4 py-3 min-w-[130px]">
@@ -260,6 +297,9 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
                     )}
                   </td>
                   <td className="px-4 py-3 text-slate-500 text-xs whitespace-nowrap">{p.date}</td>
+                  <td className="px-4 py-3 text-slate-400 text-[10px] whitespace-nowrap">
+                    {p.updated_at ? (p.updated_at.includes('T') ? new Date(p.updated_at).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' }) : p.updated_at) : '—'}
+                  </td>
                   <td className="px-4 py-3 text-slate-600 text-xs">{p.receiver || '—'}</td>
                   <td className="px-4 py-3 text-xs">
                     {(p.receiver && p.receiver !== 'Chưa nhận' && p.method) ? (
