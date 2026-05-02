@@ -41,12 +41,12 @@ interface ContractForm {
   extra_person_fee: number;
   note: string;
   end_date: string;
+  tenant_id: string;
 }
-
 const makeEmptyForm = (): ContractForm => ({
   room_id: '', tenant: '', phone: '', cccd: '', people_count: 1, children_count: 0,
   move_in_date: todayStr(), start_date: '', duration: 1, rent: 0, deposit: 0,
-  start_electric: 0, discount: 0, extra_person_fee: 0, note: '', end_date: '',
+  start_electric: 0, discount: 0, extra_person_fee: 0, note: '', end_date: '', tenant_id: '',
 });
 
 interface FieldError {
@@ -158,6 +158,7 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
       move_in_date: String(c.move_in_date || c.start_date || ''), start_date: String(c.start_date || ''), duration: durationMonths,
       rent: c.rent || 0, deposit: c.deposit || 0, start_electric: c.start_electric || 0,
       discount: c.discount || 0, extra_person_fee: c.extra_person_fee || 0, note: String(c.note || ''), end_date: c.end_date || '',
+      tenant_id: String(c.tenant_id || ''),
     });
     setErrors({});
     setSaveError('');
@@ -327,11 +328,48 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
             <label className="block text-xs font-medium text-slate-600 mb-1">Mã phòng<RequiredStar /></label>
             <select id="select-contract-room" value={form.room_id} onChange={e => onRoomChange(e.target.value)} disabled={!!editItem}
               className={`w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none disabled:bg-slate-50 ${errors.room_id ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`}>
-              <option value="">Chọn phòng</option>
-              {data.rooms.map((r: any) => <option key={r.id} value={r.id}>{r.name} ({r.id}) — {formatVND(r.price)}</option>)}
+              <option value="">-- Chọn phòng --</option>
+              {data.rooms.map((r: any) => (
+                <option key={r.id} value={r.id}>
+                  {r.name} ({r.id}) - {formatVND(r.price)}
+                </option>
+              ))}
             </select>
             <FieldErr msg={errors.room_id} />
           </div>
+
+          {/* Tenant Selection */}
+          {!editItem && (
+            <div className="col-span-2">
+              <label className="block text-xs font-medium text-slate-500 mb-1">Chọn khách cũ (nếu có)</label>
+              <select 
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none bg-slate-50"
+                value={form.tenant_id}
+                onChange={(e) => {
+                  const tid = e.target.value;
+                  if (!tid) {
+                    setForm({ ...form, tenant_id: '', tenant: '', phone: '', cccd: '' });
+                    return;
+                  }
+                  const t = data.tenants.find((i: any) => i.id === tid);
+                  if (t) {
+                    setForm({ ...form, tenant_id: tid, tenant: t.name || '', phone: t.phone || '', cccd: t.cccd || '' });
+                  }
+                }}
+              >
+                <option value="">-- Khách mới (Tự động tạo) --</option>
+                {(data.tenants || []).map((t: any) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name} - {t.phone || 'N/A'} ({t.id})
+                  </option>
+                ))}
+              </select>
+              <p className="text-[10px] text-slate-400 mt-1 italic">
+                * Nếu là khách mới, hãy để trống ô này. Hệ thống sẽ tự động tạo hồ sơ khách thuê.
+              </p>
+            </div>
+          )}
+
           {/* Tenant */}
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Khách đại diện<RequiredStar /></label>
