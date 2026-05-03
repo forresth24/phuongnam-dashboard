@@ -8,7 +8,7 @@ import { ConfirmDialog } from './ui/ConfirmDialog';
 import { DatePickerInput } from './ui/DatePickerInput';
 import { getReceivers, autoPaymentStatus, getContractMonthRange } from '../lib/settings-helpers';
 import {
-  formatVND, todayStr, firstDayOfMonthStr, roundUp10k,
+  formatVND, todayStr, firstDayOfMonthStr, roundUp10k, roundUp1k,
   calculateExpectedAmount, validatePaymentForm, sumBreakdown,
   makeEmptyPaymentForm, getPaymentTypeLabel,
   type PaymentFormData, type PaymentFieldError,
@@ -238,7 +238,7 @@ export function PaymentFormModal({
       extra_person_fee: roundUp10k(exp.fullExtraFee),
       living_fee: roundUp10k(exp.fullSurcharge * ratio),
       water_fee: roundUp10k(exp.fullLivingFee * ratio),
-      electric_fee: roundUp10k(exp.fullElectric * ratio),
+      electric_fee: roundUp1k(exp.fullElectric * ratio),
     };
     setForm({ ...newForm, amount: sumBreakdown(newForm) });
   };
@@ -248,7 +248,7 @@ export function PaymentFormModal({
     const diff = Math.max(0, nextForm.new_electric - nextForm.old_electric);
     const unitPrice = Number(data.settings.ELECTRIC_PRICE) || 0;
     // If old electric is 0, it means it's a new contract or reading not yet recorded
-    const fee = nextForm.old_electric === 0 ? 0 : roundUp10k(diff * unitPrice);
+    const fee = nextForm.old_electric === 0 ? 0 : roundUp1k(diff * unitPrice);
     
     const finalForm = { ...nextForm, electric_fee: fee, electric_usage: diff };
     setForm({ ...finalForm, amount: sumBreakdown(finalForm) });

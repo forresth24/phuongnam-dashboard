@@ -10,6 +10,7 @@ export const formatVND = (amount: number, showSuffix: boolean = true) =>
 
 export const roundUp10k = (amount: number) => Math.ceil(amount / 10000) * 10000;
 export const roundUp5k = (amount: number) => Math.ceil(amount / 5000) * 5000;
+export const roundUp1k = (amount: number) => Math.ceil(amount / 1000) * 1000;
 
 export const todayStr = () => {
   const d = new Date();
@@ -259,7 +260,7 @@ export function calculateExpectedAmount(
     internetSurcharge: roundUp5k(totalInternetSurcharge * prorateRatio),
     livingFee: roundUp5k(waterPrice * peopleCount * prorateRatio),
     // If old electric is 0, it means it's a new contract or reading not yet recorded
-    electricFee: oldElectric === 0 ? 0 : roundUp10k(totalElectricFee),
+    electricFee: oldElectric === 0 ? 0 : roundUp1k(totalElectricFee),
     deposit: deposit,
     discount: contract ? (() => {
       const parseVal = (v: any) => {
@@ -283,7 +284,7 @@ export function calculateExpectedAmount(
   // Recommended total: only include deposit if it's a new contract (Thu cọc)
   const recommendedDeposit = isNewContract ? deposit : 0;
   const total = res.basePrice + res.extraPersonFee + res.livingFee + res.internetSurcharge + res.electricFee + recommendedDeposit;
-  const roundedTotal = total > 0 ? roundUp10k(total) : 0;
+  const roundedTotal = total > 0 ? roundUp1k(total) : 0;
 
   return {
     total: roundedTotal,
@@ -341,7 +342,7 @@ export function sumBreakdown(form: PaymentFormData): number {
   // if (fields.includes('extra_person_fee')) sum += (Number(form.extra_person_fee) || 0);
   if (fields.includes('living_fee')) sum += roundUp5k(Number(form.living_fee) || 0);
   if (fields.includes('water_fee')) sum += roundUp5k(Number(form.water_fee) || 0);
-  if (fields.includes('electric_fee')) sum += roundUp5k(Number(form.electric_fee) || 0);
+  if (fields.includes('electric_fee')) sum += roundUp1k(Number(form.electric_fee) || 0);
   if (fields.includes('deposit_fee')) {
     const totalDepositNeeded = Number(form.deposit_fee) || 0;
     const alreadyPaid = Number(form.deposit_paid) || 0;
@@ -349,7 +350,7 @@ export function sumBreakdown(form: PaymentFormData): number {
   }
   sum += (Number(form.previous_debt) || 0);
   
-  return Math.max(0, roundUp10k(sum));
+  return Math.max(0, roundUp1k(sum));
 }
 
 /** Determine the payment type label based on included fields */
