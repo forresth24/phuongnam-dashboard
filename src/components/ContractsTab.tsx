@@ -339,7 +339,7 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
           </div>
 
           {/* Tenant Selection */}
-          {!editItem && (
+          {(!editItem || (editItem && !editItem.tenant_id)) && (
             <div className="col-span-2">
               <label className="block text-xs font-medium text-slate-500 mb-1">Chọn khách cũ (nếu có)</label>
               <select 
