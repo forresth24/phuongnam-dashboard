@@ -8,8 +8,9 @@ import { Modal } from './ui/Modal';
 import { ConfirmDialog } from './ui/ConfirmDialog';
 import { getReceivers, autoPaymentStatus } from '../lib/settings-helpers';
 import { PaymentFormModal } from './PaymentFormModal';
+import { DatePickerInput } from './ui/DatePickerInput';
 import {
-  formatVND, firstDayOfMonthStr, makeEmptyPaymentForm,
+  formatVND, firstDayOfMonthStr, makeEmptyPaymentForm, todayStr,
   type PaymentFormData,
 } from '../lib/payment-utils';
 
@@ -32,6 +33,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
   const [completeItem, setCompleteItem] = useState<any>(null);
   const [completeReceiver, setCompleteReceiver] = useState('');
   const [completeMethod, setCompleteMethod] = useState('Tiền mặt');
+  const [completeDate, setCompleteDate] = useState(todayStr());
   const [sortBy, setSortBy] = useState<string>('updated_at');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
@@ -73,7 +75,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
     } else if (sortBy === 'amount') {
       valA = Number(a.amount) || 0;
       valB = Number(b.amount) || 0;
-    } else if (sortBy === 'date' || sortBy === 'updated_at') {
+    } else if (sortBy === 'received_date' || sortBy === 'updated_at') {
       const parseDate = (d: string) => {
         if (!d) return '0';
         // Handle ISO-like dates (2026-04-01T10:00:00) or DD/MM/YYYY
@@ -91,8 +93,8 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
         if (parts.length === 2) return parts[1] + parts[0]; // MM/YYYY -> YYYYMM
         return p;
       };
-      valA = parsePeriod(a.payment_period || (a.date ? a.date.split('/').slice(1).join('/') : ''));
-      valB = parsePeriod(b.payment_period || (b.date ? b.date.split('/').slice(1).join('/') : ''));
+      valA = parsePeriod(a.payment_period || (a.received_date ? a.received_date.split('/').slice(1).join('/') : ''));
+      valB = parsePeriod(b.payment_period || (b.received_date ? b.received_date.split('/').slice(1).join('/') : ''));
     } else {
       valA = String(a[sortBy] || '').toLowerCase();
       valB = String(b[sortBy] || '').toLowerCase();
@@ -108,7 +110,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
       setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
     } else {
       setSortBy(key);
-      setSortOrder(key === 'amount' || key === 'date' ? 'desc' : 'asc');
+      setSortOrder(key === 'amount' || key === 'received_date' ? 'desc' : 'asc');
     }
   };
 
@@ -124,6 +126,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
     setCompleteItem(p);
     setCompleteReceiver(receivers[0] || '');
     setCompleteMethod(p.method || 'Tiền mặt');
+    setCompleteDate(todayStr());
   };
 
   const handleDoComplete = async () => {
@@ -135,6 +138,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
         receiver: completeReceiver,
         method: completeMethod,
         status: autoPaymentStatus(completeReceiver, data.settings),
+        received_date: completeDate,
       });
       setCompleteItem(null);
       onRefresh();
@@ -200,7 +204,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
       room_id: contract ? contract.room_id : '',
       contract_id: p.contract_id,
       amount: p.amount,
-      date: p.date,
+      received_date: p.received_date || p.date,
       receiver: p.receiver || 'Chưa nhận',
       method: p.method || 'Tiền mặt',
       status: p.status || 'Chưa tới chủ nhà',
@@ -231,7 +235,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
       electric_usage: Number(p.electric_usage) || (Math.max(0, (Number(p.new_electric) || 0) - (Number(p.old_electric) || 0))),
       previous_debt: Number(p.previous_debt) || Number(p['nợ kỳ trước']) || 0,
       deposit_paid: Number(p.deposit_paid) || 0,
-      payment_period: p.payment_period || (p.date ? p.date.split('/').slice(1).join('/') : ''),
+      payment_period: p.payment_period || (p.received_date ? p.received_date.split('/').slice(1).join('/') : (p.date ? p.date.split('/').slice(1).join('/') : '')),
     });
     setModalOpen(true);
   };
@@ -267,7 +271,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
                 <th onClick={() => toggleSort('payment_type')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">Loại GD <SortIcon col="payment_type" /></div></th>
                 <th onClick={() => toggleSort('payment_period')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">Kỳ <SortIcon col="payment_period" /></div></th>
                 <th onClick={() => toggleSort('amount')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">Số tiền <SortIcon col="amount" /></div></th>
-                <th onClick={() => toggleSort('date')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">Ngày <SortIcon col="date" /></div></th>
+                <th onClick={() => toggleSort('received_date')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">Ngày <SortIcon col="received_date" /></div></th>
                 <th onClick={() => toggleSort('updated_at')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group whitespace-nowrap"><div className="flex items-center">Lần sửa cuối <SortIcon col="updated_at" /></div></th>
                 <th onClick={() => toggleSort('receiver')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">Người nhận <SortIcon col="receiver" /></div></th>
                 <th onClick={() => toggleSort('method')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">Hình thức <SortIcon col="method" /></div></th>
@@ -293,7 +297,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
                   <td className="px-4 py-3">
                     <span className="text-xs font-medium text-slate-600">
                       {(function() {
-                        const pStr = p.payment_period || p.date || '';
+                        const pStr = p.payment_period || p.received_date || p.date || '';
                         const parts = pStr.split('/');
                         if (parts.length === 3) return parts[1] + '/' + parts[2];
                         return pStr || '—';
@@ -306,7 +310,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
                       <div className="text-[10px] text-slate-400 mt-0.5">Định mức: {formatVND(p.total_amount_calculated)}</div>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-slate-500 text-xs whitespace-nowrap">{p.date}</td>
+                  <td className="px-4 py-3 text-slate-500 text-xs whitespace-nowrap">{p.received_date || p.date}</td>
                   <td className="px-4 py-3 text-slate-400 text-[10px] whitespace-nowrap">
                     {p.updated_at ? (p.updated_at.includes('T') ? new Date(p.updated_at).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' }) : p.updated_at) : '—'}
                   </td>
@@ -376,6 +380,23 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
               className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none">
               {receivers.map(r => <option key={r} value={r}>{r}</option>)}
             </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Ngày thu tiền</label>
+            <div className="flex items-center gap-2">
+              {completeDate === todayStr() ? (
+                <div className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-600">Hôm nay</div>
+              ) : (
+                <div className="flex-1"><DatePickerInput value={completeDate} onChange={setCompleteDate} /></div>
+              )}
+              {completeDate === todayStr() && (
+                <button onClick={() => setCompleteDate('')} className="text-[11px] text-indigo-600 font-medium px-2 py-1 bg-indigo-50 rounded-lg hover:bg-indigo-100 whitespace-nowrap">Chọn ngày khác</button>
+              )}
+              {completeDate !== todayStr() && (
+                <button onClick={() => setCompleteDate(todayStr())} className="text-[11px] text-indigo-600 font-medium px-2 py-1 bg-indigo-50 rounded-lg hover:bg-indigo-100 whitespace-nowrap">Chọn hôm nay</button>
+              )}
+            </div>
           </div>
 
           <div>

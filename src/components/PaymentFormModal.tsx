@@ -304,7 +304,7 @@ export function PaymentFormModal({
       const expResult = calcExpected();
 
       const commonPayload = {
-        amount: form.amount, date: form.date || todayStr(),
+        amount: form.amount, received_date: form.received_date || todayStr(),
         note: form.note, receiver: form.receiver, method: form.method,
         status: form.status, is_partial: isPartial,
         total_amount_calculated: expected,
@@ -386,7 +386,7 @@ export function PaymentFormModal({
           discount: exp.discount,
           amount: 0, // Not needed for notice
           receiver: 'Chưa nhận',
-          date: todayStr(),
+          received_date: todayStr(),
           note: isNextMonth ? `Tháng ${form.start_date.split('/')[1]}/${form.start_date.split('/')[2]}` : form.note,
           included_fields: ['base_rent', 'extra_person_fee', 'living_fee', 'water_fee', 'electric_fee'],
           days_stayed: exp.daysStayed,
@@ -769,21 +769,21 @@ export function PaymentFormModal({
               </div>
             </div>
 
-            {/* Date */}
+            {/* Received Date */}
             {form.receiver !== 'Chưa nhận' && (
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">Ngày thu</label>
                 <div className="flex items-center gap-2">
-                  {form.date === todayStr() ? (
+                  {form.received_date === todayStr() ? (
                     <div className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-600">Hôm nay</div>
                   ) : (
-                    <div className="flex-1"><DatePickerInput value={form.date} onChange={v => F('date', v)} /></div>
+                    <div className="flex-1"><DatePickerInput value={form.received_date} onChange={v => F('received_date', v)} /></div>
                   )}
-                  {form.date === todayStr() && (
-                    <button onClick={() => F('date', '')} className="text-[11px] text-indigo-600 font-medium px-2 py-1 bg-indigo-50 rounded-lg hover:bg-indigo-100 whitespace-nowrap">Chọn</button>
+                  {form.received_date === todayStr() && (
+                    <button onClick={() => F('received_date', '')} className="text-[11px] text-indigo-600 font-medium px-2 py-1 bg-indigo-50 rounded-lg hover:bg-indigo-100 whitespace-nowrap">Chọn</button>
                   )}
-                  {form.date !== todayStr() && (
-                    <button onClick={() => F('date', todayStr())} className="text-[11px] text-indigo-600 font-medium px-2 py-1 bg-indigo-50 rounded-lg hover:bg-indigo-100 whitespace-nowrap">Nay</button>
+                  {form.received_date !== todayStr() && (
+                    <button onClick={() => F('received_date', todayStr())} className="text-[11px] text-indigo-600 font-medium px-2 py-1 bg-indigo-50 rounded-lg hover:bg-indigo-100 whitespace-nowrap">Nay</button>
                   )}
                 </div>
               </div>
@@ -793,7 +793,8 @@ export function PaymentFormModal({
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Người nhận<RequiredStar /></label>
               <select id="select-receiver" value={form.receiver} onChange={e => onReceiverChange(e.target.value)}
-                className={`w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none ${errors.receiver ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`}>
+                disabled={editItem && editItem.receiver !== 'Chưa nhận' && editItem.receiver !== ''}
+                className={`w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none ${editItem && editItem.receiver !== 'Chưa nhận' && editItem.receiver !== '' ? 'bg-slate-50 opacity-70 cursor-not-allowed' : ''} ${errors.receiver ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`}>
                 <option value="Chưa nhận">Chưa nhận</option>
                 {receivers.map(r => <option key={r} value={r}>{r}</option>)}
               </select>

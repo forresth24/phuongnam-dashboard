@@ -63,7 +63,7 @@ export function RoomsTab({ config, data, loading, role, onRefresh, onNavigate }:
       hasDeposit = cp.some((p: any) => String(p.payment_type || '').toLowerCase().includes('cọc'));
       hasPaidCurrentMonth = cp.some((p: any) => 
         String(p.payment_type || '').toLowerCase().includes('tiền phòng') && 
-        isPaymentInCurrentMonth(p.date)
+        isPaymentInCurrentMonth(p.received_date || p.date)
       );
     }
     return { hasContract, hasDeposit, hasPaidCurrentMonth, memberCount: roomTenants.length, contractNote: activeContract?.note };

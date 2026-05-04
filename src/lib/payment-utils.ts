@@ -42,7 +42,7 @@ export interface PaymentFormData {
   room_id: string;
   contract_id: string;
   amount: number;
-  date: string;
+  received_date: string;
   receiver: string;
   method: string;
   status: string;
@@ -91,7 +91,7 @@ export interface PaymentFieldError {
 
 export const makeEmptyPaymentForm = (defaultDuration: number = 12): PaymentFormData => ({
   room_id: '', contract_id: '', amount: 0,
-  date: todayStr(), receiver: 'Chưa nhận', method: 'Tiền mặt',
+  received_date: todayStr(), receiver: 'Chưa nhận', method: 'Tiền mặt',
   status: 'Chưa tới chủ nhà', is_partial: false, note: '',
   tenant: '', phone: '', cccd: '', issue_date: '', issue_place: '', address: '', dob: '',
   duration: defaultDuration, start_date: firstDayOfMonthStr(),
