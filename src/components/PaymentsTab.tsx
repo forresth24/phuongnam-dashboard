@@ -34,6 +34,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
   const [completeReceiver, setCompleteReceiver] = useState('');
   const [completeMethod, setCompleteMethod] = useState('Tiền mặt');
   const [completeDate, setCompleteDate] = useState(todayStr());
+  const [completeAmount, setCompleteAmount] = useState(0);
   const [sortBy, setSortBy] = useState<string>('updated_at');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
@@ -127,6 +128,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
     setCompleteReceiver(receivers[0] || '');
     setCompleteMethod(p.method || 'Tiền mặt');
     setCompleteDate(todayStr());
+    setCompleteAmount(p.amount || 0);
   };
 
   const handleDoComplete = async () => {
@@ -135,10 +137,12 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
     try {
       await API.updatePayment(config, completeItem.id, {
         ...completeItem,
+        amount: completeAmount,
         receiver: completeReceiver,
         method: completeMethod,
         status: autoPaymentStatus(completeReceiver, data.settings),
         received_date: completeDate,
+        is_partial: completeAmount < (completeItem.total_amount_calculated || completeItem.amount || 0),
       });
       setCompleteItem(null);
       onRefresh();
@@ -374,6 +378,16 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
             Bạn đang xác nhận đã nhận số tiền <span className="font-bold text-indigo-600">{completeItem ? formatVND(completeItem.amount) : ''}</span> cho <span className="font-medium text-slate-900">{completeItem?.payment_type}</span>.
           </p>
           
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Số tiền thực nhận<RequiredStar /></label>
+            <div className="relative">
+              <input type="number" value={completeAmount} onChange={e => setCompleteAmount(Number(e.target.value) || 0)}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-indigo-600 focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
+              <div className="absolute right-3 top-2 text-[10px] text-slate-400 uppercase font-bold pointer-events-none">VND</div>
+            </div>
+            {completeAmount > 0 && <p className="text-[10px] text-indigo-500 mt-1 font-medium">{formatVND(completeAmount)}</p>}
+          </div>
+
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Người nhận<RequiredStar /></label>
             <select value={completeReceiver} onChange={e => setCompleteReceiver(e.target.value)}
