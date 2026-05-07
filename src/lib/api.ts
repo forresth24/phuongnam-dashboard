@@ -80,6 +80,8 @@ export const API = {
     fetchApi<any>(config, '/api/payments', { method: 'POST', body: JSON.stringify(data) }),
   updatePayment: (config: AppConfig, id: string, data: any) =>
     fetchApi<any>(config, `/api/payments/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  bulkUpdatePayments: (config: AppConfig, ids: string[], updates: any) =>
+    fetchApi<any>(config, '/api/payments/bulk', { method: 'PUT', body: JSON.stringify({ ids, updates }) }),
   deletePayment: (config: AppConfig, id: string) =>
     fetchApi<any>(config, `/api/payments/${id}`, { method: 'DELETE' }),
   completePayment: (config: AppConfig, id: string) =>

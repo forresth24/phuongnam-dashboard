@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Trash2, CheckCircle2, Loader2, FileText, Pencil, ArrowUpDown, ChevronUp, ChevronDown } from 'lucide-react';
+import { Plus, Trash2, CheckCircle2, Loader2, FileText, Pencil, ArrowUpDown, ChevronUp, ChevronDown, Search, Filter, ArrowRightCircle } from 'lucide-react';
 import type { AppConfig, DashboardData, UserRole } from '../lib/api';
 import { API, downloadBase64Pdf } from '../lib/api';
 import { Badge } from './ui/Badge';
@@ -37,6 +37,17 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
   const [completeAmount, setCompleteAmount] = useState(0);
   const [sortBy, setSortBy] = useState<string>('updated_at');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
+  // Filters
+  const [filterRoom, setFilterRoom] = useState('');
+  const [filterType, setFilterType] = useState('');
+  const [filterReceiver, setFilterReceiver] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+  const [filterPeriod, setFilterPeriod] = useState('');
+
+  // Bulk Selection
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkActing, setBulkActing] = useState(false);
 
   if (loading) return <div className="flex h-64 items-center justify-center"><Loader2 className="animate-spin text-indigo-500" size={32} /></div>;
   if (!data) return null;
@@ -106,6 +117,31 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
     return 0;
   });
 
+  const filteredPayments = sortedPayments.filter(p => {
+    if (filterRoom && !getRoomName(p.contract_id).toLowerCase().includes(filterRoom.toLowerCase()) && !p.contract_id.toLowerCase().includes(filterRoom.toLowerCase())) return false;
+    if (filterType && p.payment_type !== filterType) return false;
+    if (filterReceiver && p.receiver !== filterReceiver) return false;
+    if (filterStatus && (p.status || 'Hoàn thành') !== filterStatus) return false;
+    if (filterPeriod && !((p.payment_period || '').includes(filterPeriod))) return false;
+    return true;
+  });
+
+  const allFilteredIds = filteredPayments.map(p => p.id);
+  const isAllSelected = allFilteredIds.length > 0 && allFilteredIds.every(id => selectedIds.includes(id));
+
+  const toggleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedIds(selectedIds.filter(id => !allFilteredIds.includes(id)));
+    } else {
+      const newSelected = [...new Set([...selectedIds, ...allFilteredIds])];
+      setSelectedIds(newSelected);
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+
   const toggleSort = (key: string) => {
     if (sortBy === key) {
       setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
@@ -150,6 +186,25 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
       alert('Lỗi: ' + e.message);
     }
     setActing(null);
+  };
+
+  const handleBulkTransfer = async () => {
+    if (selectedIds.length === 0) return;
+    if (!confirm(`Bạn có chắc chắn muốn chuyển ${selectedIds.length} khoản thu này cho Chủ nhà?`)) return;
+    
+    setBulkActing(true);
+    try {
+      await API.bulkUpdatePayments(config, selectedIds, {
+        receiver: 'Chủ nhà',
+        status: autoPaymentStatus('Chủ nhà', data.settings),
+        updated_at: new Date().toISOString(),
+      });
+      setSelectedIds([]);
+      onRefresh();
+    } catch (e: any) {
+      alert('Lỗi bulk update: ' + e.message);
+    }
+    setBulkActing(false);
   };
 
   const handleDelete = async () => {
@@ -257,39 +312,104 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-bold text-slate-800">Lịch sử thanh toán</h2>
-        {isAdmin && (
-          <button onClick={openCreate} className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-colors">
-            <Plus size={18} /> Thu tiền
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          {selectedIds.length > 0 && isAdmin && (
+            <motion.button initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+              onClick={handleBulkTransfer} disabled={bulkActing}
+              className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-colors shadow-sm">
+              {bulkActing ? <Loader2 size={18} className="animate-spin" /> : <ArrowRightCircle size={18} />}
+              Chuyển {selectedIds.length} mục cho Chủ nhà
+            </motion.button>
+          )}
+          {isAdmin && (
+            <button onClick={openCreate} className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-colors">
+              <Plus size={18} /> Thu tiền
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 grid grid-cols-1 md:grid-cols-5 gap-4">
+        <div className="relative">
+          <Search className="absolute left-3 top-2.5 text-slate-400" size={16} />
+          <input type="text" placeholder="Tìm phòng, HĐ..." value={filterRoom} onChange={e => setFilterRoom(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 bg-slate-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
+        </div>
+        
+        <div className="relative">
+          <Filter className="absolute left-3 top-2.5 text-slate-400" size={16} />
+          <select value={filterType} onChange={e => setFilterType(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 bg-slate-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none appearance-none">
+            <option value="">Tất cả loại GD</option>
+            {Array.from(new Set(rawPayments.map(p => p.payment_type))).filter(Boolean).map(t => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="relative">
+          <select value={filterReceiver} onChange={e => setFilterReceiver(e.target.value)}
+            className="w-full px-4 py-2 bg-slate-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none appearance-none">
+            <option value="">Tất cả người nhận</option>
+            {receivers.map(r => <option key={r} value={r}>{r}</option>)}
+            <option value="Chưa nhận">Chưa nhận</option>
+          </select>
+        </div>
+
+        <div className="relative">
+          <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
+            className="w-full px-4 py-2 bg-slate-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none appearance-none">
+            <option value="">Tất cả trạng thái</option>
+            <option value="Chưa tới chủ nhà">Chưa tới chủ nhà</option>
+            <option value="Hoàn thành">Hoàn thành</option>
+          </select>
+        </div>
+
+        <div className="relative">
+          <input type="text" placeholder="Kỳ (MM/YYYY)..." value={filterPeriod} onChange={e => setFilterPeriod(e.target.value)}
+            className="w-full px-4 py-2 bg-slate-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
+        </div>
       </div>
 
       {/* Table */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
+          <table className="w-full text-left text-sm border-separate border-spacing-0">
             <thead className="bg-slate-50 text-slate-500">
               <tr>
-                <th onClick={() => toggleSort('room_name')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">HĐ / Phòng <SortIcon col="room_name" /></div></th>
-                <th onClick={() => toggleSort('floor')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">Tầng <SortIcon col="floor" /></div></th>
-                <th onClick={() => toggleSort('payment_type')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">Loại GD <SortIcon col="payment_type" /></div></th>
-                <th onClick={() => toggleSort('payment_period')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">Kỳ <SortIcon col="payment_period" /></div></th>
-                <th onClick={() => toggleSort('amount')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">Số tiền <SortIcon col="amount" /></div></th>
-                <th onClick={() => toggleSort('received_date')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">Ngày <SortIcon col="received_date" /></div></th>
-                <th onClick={() => toggleSort('updated_at')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group whitespace-nowrap"><div className="flex items-center">Lần sửa cuối <SortIcon col="updated_at" /></div></th>
-                <th onClick={() => toggleSort('receiver')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">Người nhận <SortIcon col="receiver" /></div></th>
-                <th onClick={() => toggleSort('method')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">Hình thức <SortIcon col="method" /></div></th>
-                <th onClick={() => toggleSort('status')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">Trạng thái <SortIcon col="status" /></div></th>
-                <th className="px-4 py-3 font-medium">Ghi chú</th>
-                {isAdmin && <th className="px-4 py-3 font-medium">Thao tác</th>}
+                {isAdmin && (
+                  <th className="w-12 px-4 py-3 font-medium sticky left-0 z-20 bg-slate-50 border-b border-slate-100">
+                    <input type="checkbox" checked={isAllSelected} onChange={toggleSelectAll} className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                  </th>
+                )}
+                <th onClick={() => toggleSort('room_name')} className={`px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group sticky border-b border-slate-100 z-20 bg-slate-50 ${isAdmin ? 'left-12' : 'left-0'}`}>
+                  <div className="flex items-center">HĐ / Phòng <SortIcon col="room_name" /></div>
+                </th>
+                <th onClick={() => toggleSort('floor')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group border-b border-slate-100"><div className="flex items-center">Tầng <SortIcon col="floor" /></div></th>
+                <th onClick={() => toggleSort('payment_type')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group border-b border-slate-100"><div className="flex items-center">Loại GD <SortIcon col="payment_type" /></div></th>
+                <th onClick={() => toggleSort('payment_period')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group border-b border-slate-100"><div className="flex items-center">Kỳ <SortIcon col="payment_period" /></div></th>
+                <th onClick={() => toggleSort('amount')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group border-b border-slate-100"><div className="flex items-center">Số tiền <SortIcon col="amount" /></div></th>
+                <th onClick={() => toggleSort('received_date')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group border-b border-slate-100"><div className="flex items-center">Ngày <SortIcon col="received_date" /></div></th>
+                <th onClick={() => toggleSort('updated_at')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group whitespace-nowrap border-b border-slate-100"><div className="flex items-center">Lần sửa cuối <SortIcon col="updated_at" /></div></th>
+                <th onClick={() => toggleSort('receiver')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group border-b border-slate-100"><div className="flex items-center">Người nhận <SortIcon col="receiver" /></div></th>
+                <th onClick={() => toggleSort('method')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group border-b border-slate-100"><div className="flex items-center">Hình thức <SortIcon col="method" /></div></th>
+                <th onClick={() => toggleSort('status')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group border-b border-slate-100"><div className="flex items-center">Trạng thái <SortIcon col="status" /></div></th>
+                <th className="px-4 py-3 font-medium border-b border-slate-100">Ghi chú</th>
+                {isAdmin && <th className="px-4 py-3 font-medium border-b border-slate-100">Thao tác</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {sortedPayments.map((p: any) => (
-                <motion.tr key={p.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="hover:bg-slate-50/50 transition-colors">
-                  <td className="px-4 py-3">
-                    <div className="font-medium text-slate-900 text-xs">{getRoom(p.contract_id)}</div>
-                    <div className="text-[10px] text-slate-400 font-mono">{p.contract_id}</div>
+              {filteredPayments.map((p: any) => (
+                <motion.tr key={p.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className={`hover:bg-slate-50/50 transition-colors ${selectedIds.includes(p.id) ? 'bg-indigo-50/30' : ''}`}>
+                  {isAdmin && (
+                    <td className="w-12 px-4 py-3 sticky left-0 z-10 bg-white shadow-[1px_0_0_0_rgba(0,0,0,0.05)]">
+                      <input type="checkbox" checked={selectedIds.includes(p.id)} onChange={() => toggleSelect(p.id)} className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                    </td>
+                  )}
+                  <td className={`px-4 py-3 sticky z-10 bg-white shadow-[1px_0_0_0_rgba(0,0,0,0.05)] ${isAdmin ? 'left-12' : 'left-0'}`}>
+                    <div className="font-medium text-slate-900 text-xs whitespace-nowrap">{getRoom(p.contract_id)}</div>
+                    <div className="text-[10px] text-slate-400 font-mono whitespace-nowrap">{p.contract_id}</div>
                   </td>
                   <td className="px-4 py-3 text-center text-xs text-slate-600">
                     {getFloor(p.contract_id)}
@@ -351,7 +471,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
                   )}
                 </motion.tr>
               ))}
-              {sortedPayments.length === 0 && <tr><td colSpan={10} className="px-4 py-8 text-center text-slate-400">Chưa có giao dịch nào</td></tr>}
+              {filteredPayments.length === 0 && <tr><td colSpan={13} className="px-4 py-8 text-center text-slate-400">Chưa có giao dịch nào phù hợp bộ lọc</td></tr>}
             </tbody>
           </table>
         </div>
