@@ -125,37 +125,51 @@ export function PaymentFormModal({
     const rid = roomId || form.room_id;
     const contract = getActiveContract(rid);
     const needsContract = !!(rid && !contract);
-    
+
     // Calculate already paid deposit for this contract
     let depositPaid = 0;
+    let rentPaid = 0;
+    let extraPaid = 0;
+    const period = form.payment_period || (form.start_date ? form.start_date.split('/').slice(1).join('/') : '');
+
     if (contract) {
-      depositPaid = data.payments
-        .filter((p: any) => String(p.contract_id) === String(contract.id) && String(p.payment_type || '').toLowerCase().includes('cọc'))
-        .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+      const contractPayments = data.payments.filter((p: any) => 
+        String(p.contract_id) === String(contract.id) && 
+        (!editItem || String(p.id) !== String(editItem.id))
+      );
+      
+      depositPaid = contractPayments.reduce((sum, p) => sum + (Number(p.deposit_fee) || 0), 0);
+      
+      // Calculate rent already paid for this period
+      if (period) {
+        rentPaid = contractPayments
+          .filter((p: any) => p.payment_period === period)
+          .reduce((sum, p) => sum + (Number(p.base_rent) || 0), 0);
+        extraPaid = contractPayments
+          .filter((p: any) => p.payment_period === period)
+          .reduce((sum, p) => sum + (Number(p.extra_fee_total) || Number(p.extra_person_fee) || 0), 0);
+      }
     }
 
     let included = ['base_rent', 'extra_person_fee', 'living_fee', 'water_fee', 'electric_fee'];
     if (needsContract) {
       included = ['deposit_fee']; // Default only deposit for new contracts
-    } else if (exp.deposit > 0 && depositPaid < exp.deposit) {
-      // If deposit not fully paid, we might want to include it, but let's keep monthly as default for existing contracts
     }
     
     const partialForm: any = {
-      base_rent: exp.basePrice,
-      extra_person_fee: exp.extraPersonFee,
+      base_rent: Math.max(0, exp.basePrice - rentPaid),
+      extra_person_fee: Math.max(0, exp.extraPersonFee - extraPaid),
       living_fee: exp.internetSurcharge,
       water_fee: exp.livingFee,
       electric_fee: exp.electricFee,
-      deposit_fee: exp.deposit,
+      deposit_fee: Math.max(0, exp.deposit - depositPaid),
       deposit_paid: depositPaid,
       discount: exp.discount,
       included_fields: included,
       days_stayed: exp.daysStayed,
       days_in_month: exp.daysInMonth,
       old_electric: exp.oldElectric,
-      // Only set new_electric to old_electric if it hasn't been modified yet (is 0 or same as old)
-      new_electric: (exp.oldElectric), 
+      new_electric: exp.oldElectric, 
     };
     partialForm.amount = sumBreakdown(partialForm as any);
     return partialForm;
@@ -359,10 +373,14 @@ export function PaymentFormModal({
         // Calculate for each room based on current toggle
         const exp = calculateExpectedAmount(rid, data, getActiveContract, false, form.start_date, Number(contract.people_count) || 1);
         
-        // Calculate already paid deposit for this contract
-        const depositPaid = data.payments
-          .filter((p: any) => String(p.contract_id) === String(contract.id) && String(p.payment_type || '').toLowerCase().includes('cọc'))
-          .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+        // Calculate already paid deposit and rent for this room
+        const contractPayments = data.payments.filter((p: any) => String(p.contract_id) === String(contract.id));
+        const depositPaid = contractPayments.reduce((sum, p) => sum + (Number(p.deposit_fee) || 0), 0);
+        
+        const period = form.payment_period || (form.start_date ? form.start_date.split('/').slice(1).join('/') : '');
+        const rentPaid = contractPayments
+          .filter((p: any) => p.payment_period === period)
+          .reduce((sum, p) => sum + (Number(p.base_rent) || 0), 0);
 
         // Build a temporary form for this room
         const roomForm: PaymentFormData = {
@@ -372,12 +390,12 @@ export function PaymentFormModal({
           tenant: contract.tenant,
           phone: contract.phone,
           people_count: Number(contract.people_count) || 1,
-          base_rent: exp.basePrice,
+          base_rent: Math.max(0, exp.basePrice - rentPaid),
           extra_person_fee: exp.extraPersonFee,
           living_fee: exp.internetSurcharge,
           water_fee: exp.livingFee,
           electric_fee: exp.electricFee,
-          deposit_fee: exp.deposit, // Use the full deposit needed
+          deposit_fee: Math.max(0, exp.deposit - depositPaid),
           deposit_paid: depositPaid, // But show how much is paid
           payment_period: form.payment_period || (form.start_date ? form.start_date.split('/').slice(1).join('/') : ''),
           old_electric: exp.oldElectric,

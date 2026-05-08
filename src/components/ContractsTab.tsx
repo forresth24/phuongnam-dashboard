@@ -35,7 +35,7 @@ interface ContractForm {
   start_date: string;
   duration: number;
   rent: number;
-  deposit: number;
+  deposit_paid: number;
   start_electric: number;
   discount: number;
   extra_person_fee: number;
@@ -45,7 +45,7 @@ interface ContractForm {
 }
 const makeEmptyForm = (): ContractForm => ({
   room_id: '', tenant: '', phone: '', cccd: '', people_count: 1, children_count: 0,
-  move_in_date: todayStr(), start_date: '', duration: 1, rent: 0, deposit: 0,
+  move_in_date: todayStr(), start_date: '', duration: 1, rent: 0, deposit_paid: 0,
   start_electric: 0, discount: 0, extra_person_fee: 0, note: '', end_date: '', tenant_id: '',
 });
 
@@ -80,7 +80,7 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
 
   const sortedContracts = [...rawContracts].sort((a, b) => {
     let valA = a[sortBy], valB = b[sortBy];
-    if (sortBy === 'rent' || sortBy === 'deposit' || sortBy === 'people_count' || sortBy === 'duration') {
+    if (sortBy === 'rent' || sortBy === 'deposit_paid' || sortBy === 'people_count' || sortBy === 'duration') {
       valA = Number(valA) || 0;
       valB = Number(valB) || 0;
     } else {
@@ -156,7 +156,7 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
       room_id: String(c.room_id || ''), tenant: String(c.tenant || ''), phone: String(c.phone || ''), cccd: tenantCccd,
       people_count: c.people_count || 1, children_count: c.children_count || 0,
       move_in_date: String(c.move_in_date || c.start_date || ''), start_date: String(c.start_date || ''), duration: durationMonths,
-      rent: c.rent || 0, deposit: c.deposit || 0, start_electric: c.start_electric || 0,
+      rent: c.rent || 0, deposit_paid: c.deposit_paid || 0, start_electric: c.start_electric || 0,
       discount: c.discount || 0, extra_person_fee: c.extra_person_fee || 0, note: String(c.note || ''), end_date: c.end_date || '',
       tenant_id: String(c.tenant_id || ''),
     });
@@ -188,7 +188,7 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
     let epf = 0;
     if (roomType === 'phòng đơn' && peopleCount > 1) epf = roundUp10k((Number(settings.EXTRA_FEE_SINGLE) || 0) * (peopleCount - 1));
     else if (roomType === 'phòng đôi' && peopleCount > 2) epf = roundUp10k((Number(settings.EXTRA_FEE_DOUBLE) || 0) * (peopleCount - 2));
-    setForm({ ...form, room_id: roomId, rent: price, deposit: price, extra_person_fee: epf });
+    setForm({ ...form, room_id: roomId, rent: price, deposit_paid: 0, extra_person_fee: epf });
     if (errors.room_id) setErrors({ ...errors, room_id: undefined });
   };
 
@@ -200,13 +200,13 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
       if (editItem) {
         const payload: any = { 
           ...form, 
-          deposit: form.rent, 
+          deposit_paid: form.deposit_paid, 
           people_count: Math.max(1, Number(form.people_count) || 1),
           extra_person_fee: form.extra_person_fee 
         };
         await API.updateContract(config, editItem.id, payload);
       } else {
-        await API.createContract(config, { ...form, deposit: form.rent, people_count: Math.max(1, Number(form.people_count) || 1), extra_person_fee: form.extra_person_fee });
+        await API.createContract(config, { ...form, deposit_paid: form.deposit_paid, people_count: Math.max(1, Number(form.people_count) || 1), extra_person_fee: form.extra_person_fee });
       }
       setModalOpen(false);
       onRefresh();
@@ -280,7 +280,7 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
                 <th onClick={() => toggleSort('phone')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">SĐT <SortIcon col="phone" /></div></th>
                 <th onClick={() => toggleSort('start_date')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">Thời hạn <SortIcon col="start_date" /></div></th>
                 <th onClick={() => toggleSort('rent')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">Giá thuê <SortIcon col="rent" /></div></th>
-                <th onClick={() => toggleSort('deposit')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">Cọc <SortIcon col="deposit" /></div></th>
+                <th onClick={() => toggleSort('deposit_paid')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">Cọc <SortIcon col="deposit_paid" /></div></th>
                 <th onClick={() => toggleSort('status')} className="px-4 py-3 font-medium cursor-pointer hover:bg-slate-100 group"><div className="flex items-center">Trạng thái <SortIcon col="status" /></div></th>
                 {isAdmin && <th className="px-4 py-3 font-medium">Thao tác</th>}
                 {!isAdmin && <th className="px-4 py-3 font-medium">Xuất PDF</th>}
@@ -295,7 +295,7 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
                   <td className="px-4 py-3 text-slate-500">{c.phone}</td>
                   <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{displayRange(c.start_date, c.end_date)}</td>
                   <td className="px-4 py-3 font-medium text-indigo-600">{formatVND(c.rent)}</td>
-                  <td className="px-4 py-3">{formatVND(c.deposit || 0)}</td>
+                  <td className="px-4 py-3">{formatVND(c.deposit_paid || 0)}</td>
                   <td className="px-4 py-3"><Badge variant={c.status === 'active' ? 'success' : 'neutral'}>{c.status === 'active' ? 'Đang hoạt động' : 'Đã kết thúc'}</Badge></td>
                     <td className="px-4 py-3">
                       <div className="flex gap-1">

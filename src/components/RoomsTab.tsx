@@ -285,7 +285,7 @@ export function RoomsTab({ config, data, loading, role, onRefresh, onNavigate }:
               <div><span className="text-slate-400 text-xs block">Thời hạn</span><span>{detailContract.start_date} → {detailContract.end_date || '—'}</span></div>
               <div><span className="text-slate-400 text-xs block">Số người</span><span>{detailContract.people_count || 1}</span></div>
               <div><span className="text-slate-400 text-xs block">Giá thuê</span><span className="font-bold text-indigo-600">{formatVND(detailContract.rent)}</span></div>
-              <div><span className="text-slate-400 text-xs block">Tiền cọc</span><span>{formatVND(detailContract.deposit || 0)}</span></div>
+              <div><span className="text-slate-400 text-xs block">Tiền cọc</span><span>{formatVND(detailContract.deposit_paid || 0)}</span></div>
             </div>
             {detailContract.note && <div className="text-xs text-slate-500 bg-slate-50 p-3 rounded-lg">📝 {detailContract.note}</div>}
             {onNavigate && <button onClick={() => { setDetailRoom(null); onNavigate('contracts'); }} className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:underline mt-2"><ExternalLink size={12} /> Mở trang Hợp đồng</button>}

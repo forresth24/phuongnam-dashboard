@@ -339,14 +339,12 @@ export function sumBreakdown(form: PaymentFormData): number {
   const fields = form.included_fields || [];
   let sum = 0;
   if (fields.includes('base_rent')) sum += (Number(form.base_rent) || 0);
-  // if (fields.includes('extra_person_fee')) sum += (Number(form.extra_person_fee) || 0);
+  if (fields.includes('extra_person_fee')) sum += (Number(form.extra_person_fee) || 0);
   if (fields.includes('living_fee')) sum += roundUp5k(Number(form.living_fee) || 0);
   if (fields.includes('water_fee')) sum += roundUp5k(Number(form.water_fee) || 0);
   if (fields.includes('electric_fee')) sum += roundUp1k(Number(form.electric_fee) || 0);
   if (fields.includes('deposit_fee')) {
-    const totalDepositNeeded = Number(form.deposit_fee) || 0;
-    const alreadyPaid = Number(form.deposit_paid) || 0;
-    sum += Math.max(0, totalDepositNeeded - alreadyPaid);
+    sum += (Number(form.deposit_fee) || 0);
   }
   sum += (Number(form.previous_debt) || 0);
   
