@@ -379,6 +379,10 @@ export function PaymentFormModal({
         }
       }
 
+      const isPaidStatus = form.status === 'Hoàn thành' || form.status === 'Đã hoàn thành';
+      const actualDepositPaidTotal = (form.deposit_paid || 0) + (isPaidStatus ? finalBreakdown.deposit_fee : 0);
+      const actualDepositRemaining = Math.max(0, (expResult.deposit || 0) - actualDepositPaidTotal);
+
       const commonPayload = {
         amount: form.amount, received_date: form.received_date || todayStr(),
         note: form.note, receiver: form.receiver, method: form.method,
@@ -395,8 +399,8 @@ export function PaymentFormModal({
         electric_usage: Math.max(0, form.new_electric - form.old_electric),
         deposit_fee: finalBreakdown.deposit_fee, 
         deposit_amount: finalBreakdown.deposit_fee,
-        deposit_remaining: Math.max(0, (expResult.deposit || 0) - (form.deposit_paid || 0) - finalBreakdown.deposit_fee),
-        deposit_paid_total: (form.deposit_paid || 0) + finalBreakdown.deposit_fee,
+        deposit_remaining: actualDepositRemaining,
+        deposit_paid_total: actualDepositPaidTotal,
         days_stayed: form.days_stayed || expResult.daysStayed,
         days_in_month: expResult.daysInMonth,
         deposit_paid: form.deposit_paid,
