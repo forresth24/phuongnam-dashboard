@@ -138,7 +138,7 @@ export function PaymentFormModal({
         (!editItem || String(p.id) !== String(editItem.id))
       );
       
-      depositPaid = contractPayments.reduce((sum, p) => sum + (Number(p.deposit_fee) || 0), 0);
+      depositPaid = contractPayments.reduce((sum, p) => sum + (Number(p.deposit_paid) || 0), 0);
       
       // Calculate rent already paid for this period
       if (period) {
@@ -200,11 +200,35 @@ export function PaymentFormModal({
     if (errors.room_id) setErrors(prev => ({ ...prev, room_id: undefined }));
   };
 
-  const handleStartDateChange = (val: string) => {
+  const handleStartDateChange = async (val: string) => {
     const exp = calcExpected(undefined, val);
     const fields = applyExpectedFields(exp);
     // Don't overwrite new_electric during recalculation
     delete (fields as any).new_electric;
+
+    // Logic: If user changes start_date and it's different from move_in_date in contract, ask to update contract
+    // ONLY if deposit is not yet fully paid
+    const currentContract = getActiveContract(form.room_id || '');
+    if (currentContract && val && val !== currentContract.move_in_date) {
+      const targetDeposit = (Number(currentContract.rent) || 0) + (Number(currentContract.extra_person_fee) || 0);
+      const paidDeposit = Number(currentContract.deposit_paid) || 0;
+      const isDepositPending = paidDeposit < targetDeposit;
+
+      if (isDepositPending) {
+        const confirmUpdate = window.confirm(
+          `Ngày bắt đầu tính tiền (${val}) khác với ngày dọn vào trong hợp đồng (${currentContract.move_in_date}). \n\nBạn có muốn cập nhật ngày dọn vào của hợp đồng thành ${val} không để các lần thu sau được chính xác?`
+        );
+        if (confirmUpdate) {
+          try {
+            await API.updateContract(config, currentContract.id, { move_in_date: val });
+          } catch (err: any) {
+            console.error("Lỗi cập nhật hợp đồng:", err);
+            alert("Không thể cập nhật ngày dọn vào của hợp đồng: " + err.message);
+          }
+        }
+      }
+    }
+
     setForm(prev => ({ 
       ...prev, 
       start_date: val, 

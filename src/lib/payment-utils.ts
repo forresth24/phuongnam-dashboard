@@ -188,7 +188,7 @@ export function calculateExpectedAmount(
   const totalInternetSurcharge = internetSurcharge * peopleCount - discount;
   const totalElectricFee = electricPrice * peopleCount;
 
-  // Tiền cọc = Giá phòng + Phụ thu quá người - Giảm giá
+  // Tiền cọc = Giá phòng + Phụ thu quá người
   const deposit = basePrice + extraPersonFee;
 
   let daysStayed = 0;
