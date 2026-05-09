@@ -59,7 +59,13 @@ export function PaymentFormModal({
   // Sync form when modal opens with new initialForm
   useEffect(() => {
     if (open && initialForm) {
-      setForm(initialForm);
+      // Normalize deposit fields from sheet data to form state
+      const normalizedForm = {
+        ...initialForm,
+        // If editing an existing payment, p.deposit_amount (from sheet) is our deposit_fee (in form)
+        deposit_fee: initialForm.deposit_fee || (initialForm as any).deposit_amount || 0,
+      };
+      setForm(normalizedForm);
       setErrors({});
       setSaveError('');
       setSelectedRoomIds(initialForm.room_id ? [initialForm.room_id] : []);
@@ -138,7 +144,8 @@ export function PaymentFormModal({
         (!editItem || String(p.id) !== String(editItem.id))
       );
       
-      depositPaid = contractPayments.reduce((sum, p) => sum + (Number(p.deposit_paid) || 0), 0);
+      // Sum up only the ACTUAL amounts paid in each transaction (not the cumulative total)
+      depositPaid = contractPayments.reduce((sum, p) => sum + (Number(p.deposit_amount || p.deposit_fee || 0)), 0);
       
       // Calculate rent already paid for this period
       if (period) {
@@ -152,8 +159,13 @@ export function PaymentFormModal({
     }
 
     let included = ['base_rent', 'extra_person_fee', 'living_fee', 'water_fee', 'electric_fee'];
+    const remainingDeposit = Math.max(0, exp.deposit - depositPaid);
+    
     if (needsContract) {
       included = ['deposit_fee']; // Default only deposit for new contracts
+    } else if (remainingDeposit > 0) {
+      // If there's still deposit to pay, include it in the default fields
+      included.push('deposit_fee');
     }
     
     const partialForm: any = {
@@ -162,7 +174,7 @@ export function PaymentFormModal({
       living_fee: exp.internetSurcharge,
       water_fee: exp.livingFee,
       electric_fee: exp.electricFee,
-      deposit_fee: Math.max(0, exp.deposit - depositPaid),
+      deposit_fee: remainingDeposit,
       deposit_paid: depositPaid,
       discount: exp.discount,
       included_fields: included,
@@ -298,7 +310,7 @@ export function PaymentFormModal({
   };
 
   const toggleMonthlyGroup = () => {
-    const group = ['base_rent', 'water_fee', 'living_fee', 'electric_fee'];
+    const group = ['base_rent', 'water_fee', 'living_fee', 'electric_fee', 'extra_person_fee'];
     const allChecked = group.every(k => form.included_fields?.includes(k));
     let next;
     if (allChecked) {
@@ -341,21 +353,50 @@ export function PaymentFormModal({
       const isPartial = form.amount < expected;
       const expResult = calcExpected();
 
+      // Data Integrity: Ensure the breakdown doesn't exceed the actual amount paid
+      let finalBreakdown = {
+        base_rent: form.included_fields?.includes('base_rent') ? form.base_rent : 0,
+        extra_person_fee: form.included_fields?.includes('extra_person_fee') ? form.extra_person_fee : 0,
+        living_fee: form.included_fields?.includes('living_fee') ? form.living_fee : 0,
+        water_fee: form.included_fields?.includes('water_fee') ? form.water_fee : 0,
+        electric_fee: form.included_fields?.includes('electric_fee') ? form.electric_fee : 0,
+        deposit_fee: form.included_fields?.includes('deposit_fee') ? form.deposit_fee : 0,
+      };
+      
+      const breakdownSum = Object.values(finalBreakdown).reduce((a, b) => a + b, 0);
+      if (breakdownSum > form.amount) {
+        let remainingDiff = breakdownSum - form.amount;
+        // Reduce deposit first, then rent, then services
+        const order: (keyof typeof finalBreakdown)[] = ['deposit_fee', 'base_rent', 'living_fee', 'water_fee', 'electric_fee', 'extra_person_fee'];
+        for (const key of order) {
+          if (remainingDiff <= 0) break;
+          const currentVal = finalBreakdown[key];
+          if (currentVal > 0) {
+            const reduceAmount = Math.min(currentVal, remainingDiff);
+            finalBreakdown[key] -= reduceAmount;
+            remainingDiff -= reduceAmount;
+          }
+        }
+      }
+
       const commonPayload = {
         amount: form.amount, received_date: form.received_date || todayStr(),
         note: form.note, receiver: form.receiver, method: form.method,
         status: form.status, is_partial: isPartial,
         total_amount_calculated: expected,
         discount_applied: form.discount,
-        base_rent: form.base_rent,
-        extra_fee_total: form.extra_person_fee,
-        surcharge_total: form.living_fee,
-        water_total: form.water_fee,
-        electric_total: form.electric_fee,
+        base_rent: finalBreakdown.base_rent,
+        extra_fee_total: finalBreakdown.extra_person_fee,
+        surcharge_total: finalBreakdown.living_fee,
+        water_total: finalBreakdown.water_fee,
+        electric_total: finalBreakdown.electric_fee,
         old_electric: form.old_electric,
         new_electric: form.new_electric,
         electric_usage: Math.max(0, form.new_electric - form.old_electric),
-        deposit_fee: form.deposit_fee,
+        deposit_fee: finalBreakdown.deposit_fee, 
+        deposit_amount: finalBreakdown.deposit_fee,
+        deposit_remaining: Math.max(0, (expResult.deposit || 0) - (form.deposit_paid || 0) - finalBreakdown.deposit_fee),
+        deposit_paid_total: (form.deposit_paid || 0) + finalBreakdown.deposit_fee,
         days_stayed: form.days_stayed || expResult.daysStayed,
         days_in_month: expResult.daysInMonth,
         deposit_paid: form.deposit_paid,
@@ -399,7 +440,7 @@ export function PaymentFormModal({
         
         // Calculate already paid deposit and rent for this room
         const contractPayments = data.payments.filter((p: any) => String(p.contract_id) === String(contract.id));
-        const depositPaid = contractPayments.reduce((sum, p) => sum + (Number(p.deposit_fee) || 0), 0);
+        const depositPaid = contractPayments.reduce((sum, p) => sum + (Number(p.deposit_amount || p.deposit_fee || 0)), 0);
         
         const period = form.payment_period || (form.start_date ? form.start_date.split('/').slice(1).join('/') : '');
         const rentPaid = contractPayments
@@ -727,7 +768,7 @@ export function PaymentFormModal({
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <input type="checkbox" 
-                    checked={['base_rent', 'water_fee', 'living_fee', 'electric_fee'].every(k => form.included_fields?.includes(k))}
+                    checked={['base_rent', 'water_fee', 'living_fee', 'electric_fee', 'extra_person_fee'].every(k => form.included_fields?.includes(k))}
                     onChange={toggleMonthlyGroup}
                     className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500" />
                   <label className="text-sm font-bold text-slate-700">Các khoản phí cố định (Phòng + Nước + Dịch vụ + Điện)</label>

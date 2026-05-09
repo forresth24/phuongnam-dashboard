@@ -254,14 +254,21 @@ export function calculateExpectedAmount(
   }
 
   const res = {
-    basePrice: roundUp10k(deposit * prorateRatio),
-    // extraPersonFee: roundUp10k(extraPersonFee * prorateRatio),
+    basePrice: roundUp10k(basePrice * prorateRatio),
     extraPersonFee: roundUp10k(extraPersonFee),
     internetSurcharge: roundUp5k(totalInternetSurcharge * prorateRatio),
     livingFee: roundUp5k(waterPrice * peopleCount * prorateRatio),
     // If old electric is 0, it means it's a new contract or reading not yet recorded
     electricFee: oldElectric === 0 ? 0 : roundUp1k(totalElectricFee),
     deposit: deposit,
+    fullBasePrice: basePrice,
+    fullExtraFee: extraPersonFee,
+    fullSurcharge: totalInternetSurcharge,
+    fullLivingFee: waterPrice * peopleCount,
+    fullElectric: totalElectricFee,
+    daysStayed,
+    daysInMonth,
+    oldElectric,
     discount: contract ? (() => {
       const parseVal = (v: any) => {
         if (typeof v === 'number') return v;
