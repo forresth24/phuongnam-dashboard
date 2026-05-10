@@ -232,13 +232,15 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
     setActing(false);
   };
 
-  const handlePdf = async (contractId: string, type: 'contract' | 'payment') => {
+  const handlePdf = async (contractId: string, type: 'contract' | 'payment' | 'sub_contract') => {
     setPdfLoading(`${type}_${contractId}`);
     try {
-      const res = type === 'contract'
-        ? await API.getContractPdf(config, contractId)
-        : await API.getPaymentPdf(config, contractId);
-      downloadBase64Pdf(res.base64, res.filename);
+      let res;
+      if (type === 'contract') res = await API.getContractPdf(config, contractId);
+      else if (type === 'payment') res = await API.getPaymentPdf(config, contractId);
+      else if (type === 'sub_contract') res = await API.getSubContractPdf(config, contractId);
+      
+      if (res) downloadBase64Pdf(res.base64, res.filename);
     } catch (e: any) { alert('Lỗi tạo PDF: ' + e.message); }
     setPdfLoading(null);
   };
@@ -303,9 +305,9 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
                           title="Xuất PDF Hợp đồng" className="p-1.5 rounded-lg hover:bg-blue-50 text-slate-400 hover:text-blue-600 disabled:opacity-50">
                           {pdfLoading === `contract_${c.id}` ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} />}
                         </button>
-                        <button onClick={() => handlePdf(c.id, 'payment')} disabled={pdfLoading === `payment_${c.id}`}
-                          title="Xuất PDF Thông báo TT" className="p-1.5 rounded-lg hover:bg-emerald-50 text-slate-400 hover:text-emerald-600 disabled:opacity-50">
-                          {pdfLoading === `payment_${c.id}` ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} />}
+                        <button onClick={() => handlePdf(c.id, 'sub_contract')} disabled={pdfLoading === `sub_contract_${c.id}`}
+                          title="Xuất PDF HĐ Phụ" className="p-1.5 rounded-lg hover:bg-emerald-50 text-slate-400 hover:text-emerald-600 disabled:opacity-50">
+                          {pdfLoading === `sub_contract_${c.id}` ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} />}
                         </button>
                         {isAdmin && <button onClick={() => openEdit(c)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-indigo-600"><Pencil size={14} /></button>}
                         {isAdmin && c.status === 'active' && <button onClick={() => setArchiveId(c.id)} title="Kết thúc & Archive" className="p-1.5 rounded-lg hover:bg-amber-50 text-slate-400 hover:text-amber-600"><Archive size={14} /></button>}

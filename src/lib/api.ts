@@ -105,6 +105,8 @@ export const API = {
     fetchApi<{ base64: string; filename: string }>(config, `/api/pdf/contract/${contractId}`),
   getPaymentPdf: (config: AppConfig, contractId: string) =>
     fetchApi<{ base64: string; filename: string }>(config, `/api/pdf/payment/${contractId}`),
+  getSubContractPdf: (config: AppConfig, contractId: string) =>
+    fetchApi<{ base64: string; filename: string }>(config, `/api/pdf/sub-contract/${contractId}`),
   getReceiptPdf: (config: AppConfig, paymentId: string) =>
     fetchApi<{ base64: string; filename: string }>(config, `/api/pdf/receipt/${paymentId}`),
 };
