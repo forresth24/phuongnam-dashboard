@@ -203,7 +203,7 @@ export function PaymentFormModal({
       ...prev,
       room_id: roomId, contract_id: contract ? contract.id : '',
       tenant: contract ? contract.tenant : '', phone: contract ? contract.phone : '',
-      cccd: '', issue_date: '', issue_place: '', address: '', dob: '',
+      cccd: '', issue_date: '', issue_place: 'Cục Cảnh Sát', address: '', dob: '',
       start_date: startDate,
       people_count: contract ? Number(contract.people_count) || 1 : 1,
       ...fields,
@@ -632,8 +632,14 @@ export function PaymentFormModal({
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-slate-600 mb-1">Nơi cấp CCCD</label>
-                      <input value={form.issue_place} onChange={e => F('issue_place', e.target.value)} placeholder="CA TP.HCM"
-                        className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
+                      <select 
+                        value={form.issue_place} 
+                        onChange={e => F('issue_place', e.target.value)} 
+                        className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none"
+                      >
+                        <option value="Cục Cảnh Sát">Cục Cảnh Sát</option>
+                        <option value="Bộ Công An">Bộ Công An</option>
+                      </select>
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-slate-600 mb-1">Năm sinh</label>

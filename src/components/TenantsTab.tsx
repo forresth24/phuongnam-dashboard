@@ -82,7 +82,7 @@ export function TenantsTab({ config, data, loading, role, onRefresh }: Props) {
     setEditItem(t);
     setForm({
       room_id: t.room_id || '', name: t.name || '', phone: t.phone || '', cccd: t.cccd || '',
-      dob: t.dob || '', issue_date: t.issue_date || '', issue_place: t.issue_place || '', address: t.address || '',
+      dob: t.dob || '', issue_date: t.issue_date || '', issue_place: t.issue_place || 'Cục Cảnh Sát', address: t.address || '',
     });
     setModalOpen(true);
   };
@@ -208,7 +208,7 @@ export function TenantsTab({ config, data, loading, role, onRefresh }: Props) {
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Nơi cấp</label>
             <select 
-              value={form.issue_place || 'Cục Cảnh Sát'} 
+              value={form.issue_place} 
               onChange={e => F('issue_place', e.target.value)} 
               className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none"
             >

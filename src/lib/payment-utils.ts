@@ -93,7 +93,7 @@ export const makeEmptyPaymentForm = (defaultDuration: number = 12): PaymentFormD
   room_id: '', contract_id: '', amount: 0,
   received_date: todayStr(), receiver: 'Chưa nhận', method: 'Tiền mặt',
   status: 'Chưa tới chủ nhà', is_partial: false, note: '',
-  tenant: '', phone: '', cccd: '', issue_date: '', issue_place: '', address: '', dob: '',
+  tenant: '', phone: '', cccd: '', issue_date: '', issue_place: 'Cục Cảnh Sát', address: '', dob: '',
   duration: defaultDuration, start_date: firstDayOfMonthStr(),
   people_count: 1,
   discount: 0,
