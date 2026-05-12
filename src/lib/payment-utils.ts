@@ -68,8 +68,8 @@ export interface PaymentFormData {
   electric_fee: number;
   deposit_fee: number;
   included_fields: string[]; // e.g. ['base_rent', 'water_fee']
-  days_stayed: number;
-  days_in_month: number;
+  stayed_days: number;
+  period_days: number;
   old_electric: number;
   new_electric: number;
   electric_usage: number;
@@ -99,7 +99,8 @@ export const makeEmptyPaymentForm = (defaultDuration: number = 12): PaymentFormD
   discount: 0,
   base_rent: 0, extra_person_fee: 0, living_fee: 0, water_fee: 0, electric_fee: 0, deposit_fee: 0,
   included_fields: ['base_rent', 'extra_person_fee', 'living_fee', 'water_fee', 'electric_fee'],
-  days_stayed: 30, days_in_month: 30,
+  stayed_days: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate(), 
+  period_days: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate(),
   old_electric: 0, new_electric: 0, electric_usage: 0,
   previous_debt: 0,
   deposit_paid: 0,
@@ -118,8 +119,8 @@ export interface ExpectedAmountResult {
   electricFee: number;
   deposit: number;
   discount: number;
-  daysStayed: number;
-  daysInMonth: number;
+  stayed_days: number;
+  period_days: number;
   oldElectric: number;
   // Full month values (unprorated)
   fullBasePrice: number;
@@ -191,8 +192,8 @@ export function calculateExpectedAmount(
   // Tiền cọc = Giá phòng + Phụ thu quá người
   const deposit = basePrice + extraPersonFee;
 
-  let daysStayed = 0;
-  let daysInMonth = 30;
+  let stayed_days = 0;
+  let period_days = 30;
 
   // Determine proration
   const calcDate = targetDate || todayStr();
@@ -200,7 +201,7 @@ export function calculateExpectedAmount(
   if (parts.length === 3) {
     const m = Number(parts[1]);
     const y = Number(parts[2]);
-    daysInMonth = new Date(y, m, 0).getDate();
+    period_days = new Date(y, m, 0).getDate();
     
     // Check if move-in date is in this month
     const moveInDateStr = contract ? contract.move_in_date || contract.start_date : (isNewContract ? targetDate : '');
@@ -220,23 +221,23 @@ export function calculateExpectedAmount(
       }
     }
 
-    if (targetDate) {
-      const parts = targetDate.split('/');
-      const d = Number(parts[0]) || 1;
-      daysStayed = daysInMonth - d + 1;
-    } else if (isMoveInMonth && moveInDay > 1) {
-      daysStayed = daysInMonth - moveInDay + 1;
+    const targetDay = targetDate ? (Number(targetDate.split('/')[0]) || 1) : 1;
+    if (isMoveInMonth) {
+      // In move-in month, stay starts from the later of move-in date or target start date
+      const actualStartDay = Math.max(moveInDay, targetDay);
+      stayed_days = period_days - actualStartDay + 1;
     } else {
-      daysStayed = daysInMonth;
+      // Normal month, stay starts from target start date
+      stayed_days = period_days - targetDay + 1;
     }
   } else {
     const now = new Date();
-    daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-    daysStayed = daysInMonth;
+    period_days = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    stayed_days = period_days;
   }
 
   // Calculate prorated fees
-  const prorateRatio = daysStayed >= daysInMonth ? 1 : Math.min(1, daysStayed / 30);
+  const prorateRatio = stayed_days >= period_days ? 1 : Math.min(1, stayed_days / 30);
   
   // Find last payment to get electric reading
   let oldElectric = 0;
@@ -266,8 +267,8 @@ export function calculateExpectedAmount(
     fullSurcharge: totalInternetSurcharge,
     fullLivingFee: waterPrice * peopleCount,
     fullElectric: totalElectricFee,
-    daysStayed,
-    daysInMonth,
+    stayed_days,
+    period_days,
     oldElectric,
     discount: contract ? (() => {
       const parseVal = (v: any) => {
@@ -303,8 +304,8 @@ export function calculateExpectedAmount(
     electricFee: res.electricFee,
     deposit: res.deposit,
     discount: res.discount,
-    daysStayed,
-    daysInMonth,
+    stayed_days,
+    period_days,
     oldElectric: oldElectric,
     fullBasePrice: deposit,
     fullExtraFee: extraPersonFee,
@@ -392,8 +393,8 @@ export function applyExpectedToForm(form: PaymentFormData, exp: ExpectedAmountRe
     new_electric: exp.oldElectric, // Default same as old
     electric_usage: 0,
     included_fields: included,
-    days_stayed: exp.daysStayed,
-    days_in_month: exp.daysInMonth,
+    stayed_days: exp.stayed_days,
+    period_days: exp.period_days,
   };
   
   return {

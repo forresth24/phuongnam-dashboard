@@ -178,8 +178,8 @@ export function PaymentFormModal({
       deposit_paid: depositPaid,
       discount: exp.discount,
       included_fields: included,
-      days_stayed: exp.daysStayed,
-      days_in_month: exp.daysInMonth,
+      stayed_days: exp.stayed_days,
+      period_days: exp.period_days,
       old_electric: exp.oldElectric,
       new_electric: exp.oldElectric, 
     };
@@ -279,10 +279,10 @@ export function PaymentFormModal({
 
   const handleDaysChange = (days: number) => {
     const exp = calcExpected();
-    const ratio = days >= exp.daysInMonth ? 1 : days / 30;
+    const ratio = days >= exp.period_days ? 1 : days / 30;
     const newForm = {
       ...form,
-      days_stayed: days,
+      stayed_days: days,
       base_rent: roundUp10k(exp.fullBasePrice * ratio),
       // extra_person_fee: roundUp10k(exp.fullExtraFee * ratio),
       extra_person_fee: roundUp10k(exp.fullExtraFee),
@@ -401,8 +401,8 @@ export function PaymentFormModal({
         deposit_amount: finalBreakdown.deposit_fee,
         deposit_remaining: actualDepositRemaining,
         deposit_paid_total: actualDepositPaidTotal,
-        days_stayed: form.days_stayed || expResult.daysStayed,
-        days_in_month: expResult.daysInMonth,
+        stayed_days: form.stayed_days || expResult.stayed_days,
+        period_days: expResult.period_days,
         deposit_paid: form.deposit_paid,
         payment_period: form.payment_period || (form.start_date ? form.start_date.split('/').slice(1).join('/') : ''),
         payment_type: getPaymentTypeLabel(form.included_fields || []),
@@ -476,8 +476,8 @@ export function PaymentFormModal({
           received_date: todayStr(),
           note: isNextMonth ? `Tháng ${form.start_date.split('/')[1]}/${form.start_date.split('/')[2]}` : form.note,
           included_fields: ['base_rent', 'extra_person_fee', 'living_fee', 'water_fee', 'electric_fee'],
-          days_stayed: exp.daysStayed,
-          days_in_month: exp.daysInMonth,
+          stayed_days: exp.stayed_days,
+          period_days: exp.period_days,
         };
 
         // We don't save payments here, we just need to generate the PDF.
@@ -734,15 +734,15 @@ export function PaymentFormModal({
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">Số ngày tính phí</label>
                 <div className="flex items-center gap-2">
-                  {form.days_stayed === form.days_in_month ? (
+                  {form.stayed_days === form.period_days ? (
                     <div className="flex-1 bg-white border border-indigo-200 text-indigo-700 font-bold rounded-xl px-3 py-2 text-sm">1 tháng</div>
                   ) : (
-                    <input id="input-prorate-days" type="number" value={form.days_stayed} onChange={e => handleDaysChange(Number(e.target.value) || 0)}
+                    <input id="input-prorate-days" type="number" value={form.stayed_days} onChange={e => handleDaysChange(Number(e.target.value) || 0)}
                       inputMode="numeric"
                       className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
                   )}
-                  {form.days_stayed === form.days_in_month && (
-                    <button onClick={() => handleDaysChange(form.days_in_month - 1)} className="text-[10px] text-indigo-600 font-medium hover:underline">Sửa</button>
+                  {form.stayed_days === form.period_days && (
+                    <button onClick={() => handleDaysChange(form.period_days - 1)} className="text-[10px] text-indigo-600 font-medium hover:underline">Sửa</button>
                   )}
                 </div>
               </div>
@@ -768,9 +768,9 @@ export function PaymentFormModal({
               </div>
             </div>
 
-            {expResult && expResult.daysStayed < expResult.daysInMonth && (
+            {expResult && expResult.stayed_days < expResult.period_days && (
               <p className="text-[11px] text-indigo-600 bg-white/50 px-2 py-1 rounded-lg border border-indigo-100 italic">
-                Hệ thống đang tính tỉ lệ {expResult.daysStayed}/{expResult.daysInMonth} ngày.
+                Hệ thống đang tính tỉ lệ {expResult.stayed_days}/{expResult.period_days} ngày.
               </p>
             )}
 

@@ -9,7 +9,7 @@ import { ConfirmDialog } from './ui/ConfirmDialog';
 import { getContractMonthRange } from '../lib/settings-helpers';
 import { PaymentFormModal } from './PaymentFormModal';
 import {
-  formatVND, firstDayOfMonthStr, getCurrentMonthYear, isPaymentInCurrentMonth,
+  formatVND, firstDayOfMonthStr, getCurrentMonthYear,
   calculateExpectedAmount, makeEmptyPaymentForm,
   type PaymentFormData,
 } from '../lib/payment-utils';
@@ -53,6 +53,9 @@ export function RoomsTab({ config, data, loading, role, onRefresh, onNavigate }:
   const getActiveContract = (roomId: string) =>
     data.contracts.find((c: any) => String(c.room_id).trim() === String(roomId).trim());
 
+  const { month, year } = getCurrentMonthYear();
+  const currentPeriod = `${String(month).padStart(2, '0')}/${year}`;
+
   const getRoomBadges = (room: any) => {
     const activeContract = getActiveContract(room.id);
     const roomTenants = data.tenants.filter((t: any) => String(t.room_id).trim() === String(room.id).trim());
@@ -61,10 +64,12 @@ export function RoomsTab({ config, data, loading, role, onRefresh, onNavigate }:
     if (activeContract) {
       const cp = data.payments.filter((p: any) => String(p.contract_id).trim() === String(activeContract.id).trim());
       hasDeposit = cp.some((p: any) => String(p.payment_type || '').toLowerCase().includes('cọc'));
-      hasPaidCurrentMonth = cp.some((p: any) => 
-        String(p.payment_type || '').toLowerCase().includes('tiền phòng') && 
-        isPaymentInCurrentMonth(p.received_date || p.date)
-      );
+      hasPaidCurrentMonth = cp.some((p: any) => {
+        const type = String(p.payment_type || '').toLowerCase();
+        const isRent = type.includes('tiền phòng') || type.includes('tiền tháng');
+        const isThisMonth = p.payment_period === currentPeriod;
+        return isRent && isThisMonth;
+      });
     }
     return { hasContract, hasDeposit, hasPaidCurrentMonth, memberCount: roomTenants.length, contractNote: activeContract?.note };
   };
@@ -133,15 +138,14 @@ export function RoomsTab({ config, data, loading, role, onRefresh, onNavigate }:
       deposit_fee: exp.deposit,
       discount: exp.discount,
       included_fields: included,
-      days_stayed: exp.daysStayed,
-      days_in_month: exp.daysInMonth,
+      stayed_days: exp.stayed_days,
+      period_days: exp.period_days,
       old_electric: exp.oldElectric,
       new_electric: exp.oldElectric,
       electric_usage: 0,
     };
   };
 
-  const { month, year } = getCurrentMonthYear();
   const detailContract = detailRoom ? getActiveContract(detailRoom) : null;
   const detailTenants = detailRoom ? data.tenants.filter((t: any) => String(t.room_id).trim() === String(detailRoom).trim()) : [];
   const detailRoomObj = detailRoom ? rooms.find((r: any) => String(r.id) === String(detailRoom)) : null;
@@ -222,10 +226,18 @@ export function RoomsTab({ config, data, loading, role, onRefresh, onNavigate }:
               </div>
               {r.status === 'occupied' && (
                 <div className="flex flex-wrap gap-1.5 mb-3">
-                  <Badge variant={badges.hasContract ? 'success' : 'neutral'}>📋 {badges.hasContract ? 'Có HĐ' : 'Chưa có HĐ'}</Badge>
-                  <Badge variant={badges.hasDeposit ? 'info' : 'warning'}>💵 {badges.hasDeposit ? 'Đã cọc' : 'Chưa cọc'}</Badge>
-                  <Badge variant={badges.hasPaidCurrentMonth ? 'success' : 'danger'}>{badges.hasPaidCurrentMonth ? '✅' : '❌'} TT T{month}/{year}</Badge>
-                  <Badge variant="purple">👥 {badges.memberCount} người</Badge>
+                  <Badge variant={badges.hasContract ? 'success' : 'neutral'} title="Trạng thái hợp đồng">
+                    📋 {badges.hasContract ? 'Có HĐ' : 'Chưa có HĐ'}
+                  </Badge>
+                  <Badge variant={badges.hasDeposit ? 'info' : 'warning'} title="Trạng thái tiền cọc">
+                    💵 {badges.hasDeposit ? 'Đã cọc' : 'Chưa cọc'}
+                  </Badge>
+                  <Badge variant={badges.hasPaidCurrentMonth ? 'success' : 'danger'} title="Trạng thái thanh toán tháng hiện tại">
+                    {badges.hasPaidCurrentMonth ? '✅' : '❌'} TT T{month}/{year}
+                  </Badge>
+                  <Badge variant="purple" title="Số lượng thành viên trong phòng">
+                    👥 {badges.memberCount} người
+                  </Badge>
                 </div>
               )}
               <p className="text-slate-500 mb-3 text-sm">
