@@ -11,3 +11,10 @@
 .glass {
   @apply bg-white/70 backdrop-blur-md border border-white/20 shadow-xl;
 }
+
+@media print {
+  @page {
+    size: landscape;
+    margin: 1cm;
+  }
+}

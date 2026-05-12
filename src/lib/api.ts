@@ -72,8 +72,8 @@ export const API = {
     fetchApi<any>(config, `/api/contracts/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteContract: (config: AppConfig, id: string) =>
     fetchApi<any>(config, `/api/contracts/${id}`, { method: 'DELETE' }),
-  endContract: (config: AppConfig, id: string) =>
-    fetchApi<any>(config, `/api/contracts/${id}/end`, { method: 'POST' }),
+  endContract: (config: AppConfig, id: string, options?: any) =>
+    fetchApi<any>(config, `/api/contracts/${id}/end`, { method: 'POST', body: JSON.stringify(options || {}) }),
 
   // Payments CRUD
   createPayment: (config: AppConfig, data: any) =>

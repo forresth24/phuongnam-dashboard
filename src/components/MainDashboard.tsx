@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { API, type AppConfig, type DashboardData, type UserRole } from '../lib/api';
-import { LayoutDashboard, BedDouble, FileText, Users, ScrollText, Settings, LogOut, Shield } from 'lucide-react';
+import { LayoutDashboard, BedDouble, FileText, Users, ScrollText, Settings, LogOut, Shield, PieChart } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import { OverviewTab } from './OverviewTab';
@@ -8,7 +8,10 @@ import { RoomsTab } from './RoomsTab';
 import { ContractsTab } from './ContractsTab';
 import { TenantsTab } from './TenantsTab';
 import { PaymentsTab } from './PaymentsTab';
+import { ReportsTab } from './ReportsTab';
 import { SettingsTab } from './SettingsTab';
+
+declare const __APP_VERSION__: string | undefined;
 
 // ==========================================
 // MAIN LAYOUT
@@ -47,13 +50,14 @@ export function MainDashboard({ config, onLogout }: { config: AppConfig, onLogou
     { id: 'contracts', label: 'Hợp đồng', icon: ScrollText },
     { id: 'tenants', label: 'Khách thuê', icon: Users },
     { id: 'payments', label: 'Thanh toán', icon: FileText },
+    { id: 'reports', label: 'Báo cáo', icon: PieChart },
     { id: 'settings', label: 'Cài đặt', icon: Settings },
   ];
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row pb-20 md:pb-0">
       {/* Sidebar (Desktop) */}
-      <aside className="hidden md:flex w-64 bg-white border-r border-slate-200 flex-col sticky top-0 h-screen">
+      <aside className="hidden md:flex w-64 bg-white border-r border-slate-200 flex-col sticky top-0 h-screen print:hidden">
         <div className="p-6 border-b border-slate-100">
           <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600">
             Phương Nam
@@ -88,16 +92,24 @@ export function MainDashboard({ config, onLogout }: { config: AppConfig, onLogou
           <button onClick={onLogout} className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl font-medium text-sm text-rose-600 hover:bg-rose-50 transition-colors">
             <LogOut size={18} /> Đăng xuất
           </button>
+          <div className="px-4 pt-2 text-center text-[10px] text-slate-400 font-medium">
+            Phiên bản: {typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'Dev'}
+          </div>
         </div>
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full">
+      <main className="flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full print:p-0 print:max-w-none print:w-full">
         {/* Mobile Header */}
-        <header className="md:hidden flex items-center justify-between bg-white p-4 rounded-2xl shadow-sm mb-6 border border-slate-100">
-          <h1 className="text-lg font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600">
-            Phương Nam
-          </h1>
+        <header className="md:hidden flex items-center justify-between bg-white p-4 rounded-2xl shadow-sm mb-6 border border-slate-100 print:hidden">
+          <div>
+            <h1 className="text-lg font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600">
+              Phương Nam
+            </h1>
+            <div className="text-[9px] text-slate-400 font-medium mt-0.5">
+              v{typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'Dev'}
+            </div>
+          </div>
           <div className="flex items-center gap-3">
             <span className={`text-xs font-medium px-2 py-1 rounded-full ${role === 'admin' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
               {role === 'admin' ? 'Admin' : 'Viewer'}
@@ -119,15 +131,16 @@ export function MainDashboard({ config, onLogout }: { config: AppConfig, onLogou
             {activeTab === 'overview' && <OverviewTab data={data} loading={loading} />}
             {activeTab === 'rooms' && <RoomsTab config={config} data={data} loading={loading} role={role} onRefresh={forceRefresh} onNavigate={setActiveTab} />}
             {activeTab === 'contracts' && <ContractsTab config={config} data={data} loading={loading} role={role} onRefresh={forceRefresh} />}
-            {activeTab === 'tenants' && <TenantsTab config={config} data={data} loading={loading} role={role} onRefresh={forceRefresh} />}
-            {activeTab === 'payments' && <PaymentsTab config={config} data={data} loading={loading} role={role} onRefresh={forceRefresh} />}
-            {activeTab === 'settings' && <SettingsTab config={config} data={data} loading={loading} role={role} onRefresh={forceRefresh} />}
+            { activeTab === 'tenants' && <TenantsTab config={config} data={data} loading={loading} role={role} onRefresh={forceRefresh} /> }
+            { activeTab === 'payments' && <PaymentsTab config={config} data={data} loading={loading} role={role} onRefresh={forceRefresh} /> }
+            { activeTab === 'reports' && <ReportsTab config={config} data={data} loading={loading} /> }
+            { activeTab === 'settings' && <SettingsTab config={config} data={data} loading={loading} role={role} onRefresh={forceRefresh} /> }
           </motion.div>
         </AnimatePresence>
       </main>
 
       {/* Bottom Navigation (Mobile) */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-2 py-2 flex justify-between items-center z-50 pb-safe">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-2 py-2 flex justify-between items-center z-50 pb-safe print:hidden">
         {TABS.map(t => {
            const Icon = t.icon;
            const isActive = activeTab === t.id;

@@ -9,10 +9,11 @@ interface ConfirmDialogProps {
   message: string;
   confirmLabel?: string;
   loading?: boolean;
+  children?: React.ReactNode;
 }
 
 export function ConfirmDialog({
-  open, onClose, onConfirm, title = 'Xác nhận', message, confirmLabel = 'Xóa', loading = false,
+  open, onClose, onConfirm, title = 'Xác nhận', message, confirmLabel = 'Xóa', loading = false, children
 }: ConfirmDialogProps) {
   return (
     <Modal open={open} onClose={onClose} title={title} maxWidth="max-w-sm">
@@ -21,6 +22,7 @@ export function ConfirmDialog({
           <AlertTriangle className="text-rose-600" size={28} />
         </div>
         <p className="text-slate-600 text-sm">{message}</p>
+        {children && <div className="mt-4">{children}</div>}
         <div className="flex gap-3 pt-2">
           <button
             onClick={onClose}

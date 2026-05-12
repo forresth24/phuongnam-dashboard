@@ -66,6 +66,7 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
   const [saveError, setSaveError] = useState('');
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [archiveId, setArchiveId] = useState<string | null>(null);
+  const [forfeitDeposit, setForfeitDeposit] = useState(false);
   const [acting, setActing] = useState(false);
   const [pdfLoading, setPdfLoading] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<string>('room_id');
@@ -227,7 +228,7 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
   const handleArchive = async () => {
     if (!archiveId) return;
     setActing(true);
-    try { await API.endContract(config, archiveId); setArchiveId(null); onRefresh(); }
+    try { await API.endContract(config, archiveId, { forfeitDeposit }); setArchiveId(null); setForfeitDeposit(false); onRefresh(); }
     catch (e: any) { alert('Lỗi: ' + e.message); }
     setActing(false);
   };
@@ -310,7 +311,7 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
                           {pdfLoading === `sub_contract_${c.id}` ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} />}
                         </button>
                         {isAdmin && <button onClick={() => openEdit(c)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-indigo-600"><Pencil size={14} /></button>}
-                        {isAdmin && c.status === 'active' && <button onClick={() => setArchiveId(c.id)} title="Kết thúc & Archive" className="p-1.5 rounded-lg hover:bg-amber-50 text-slate-400 hover:text-amber-600"><Archive size={14} /></button>}
+                        {isAdmin && c.status === 'active' && <button onClick={() => { setArchiveId(c.id); setForfeitDeposit(false); }} title="Kết thúc & Archive" className="p-1.5 rounded-lg hover:bg-amber-50 text-slate-400 hover:text-amber-600"><Archive size={14} /></button>}
                         {isAdmin && <button onClick={() => setDeleteId(c.id)} className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600"><Trash2 size={14} /></button>}
                       </div>
                     </td>
@@ -472,7 +473,13 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
       </Modal>
 
       <ConfirmDialog open={!!deleteId} onClose={() => setDeleteId(null)} onConfirm={handleDelete} loading={acting} message="Xóa hợp đồng này? Dữ liệu sẽ được lưu vào history." />
-      <ConfirmDialog open={!!archiveId} onClose={() => setArchiveId(null)} onConfirm={handleArchive} loading={acting} title="Kết thúc & Archive" confirmLabel="Kết thúc HĐ" message="Kết thúc hợp đồng này? HĐ, thanh toán, và khách thuê liên quan sẽ được archive vào history sheet." />
+      <ConfirmDialog open={!!archiveId} onClose={() => setArchiveId(null)} onConfirm={handleArchive} loading={acting} title="Kết thúc & Archive" confirmLabel="Kết thúc HĐ" message="Kết thúc hợp đồng này? Hợp đồng sẽ được chuyển vào sheet archived_contracts. Thanh toán sẽ được giữ lại.">
+        <label className="flex items-center justify-center gap-2 text-sm text-slate-700 bg-amber-50 p-3 rounded-lg border border-amber-200 cursor-pointer">
+          <input type="checkbox" checked={forfeitDeposit} onChange={e => setForfeitDeposit(e.target.checked)} className="rounded text-amber-600 focus:ring-amber-500 w-4 h-4" />
+          <span className="font-medium text-amber-800">Khách bỏ cọc?</span>
+        </label>
+        <p className="text-xs text-amber-600/80 mt-1">Ghi chú "Khách bỏ cọc" vào hợp đồng và thanh toán.</p>
+      </ConfirmDialog>
     </div>
   );
 }
