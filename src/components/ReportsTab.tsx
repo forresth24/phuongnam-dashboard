@@ -4,6 +4,22 @@ import { FileDown, Printer, Search } from 'lucide-react';
 import type { AppConfig, DashboardData } from '../lib/api';
 import { formatVND } from '../lib/payment-utils';
 
+export const normalizePeriod = (pStr: string): string => {
+  const clean = String(pStr || '').trim();
+  if (!clean) return '';
+  const parts = clean.split('/');
+  if (parts.length === 3) {
+    // DD/MM/YYYY or D/M/YYYY -> MM/YYYY
+    const m = parts[1].padStart(2, '0');
+    return `${m}/${parts[2]}`;
+  } else if (parts.length === 2) {
+    // MM/YYYY or M/YYYY -> MM/YYYY
+    const m = parts[0].padStart(2, '0');
+    return `${m}/${parts[1]}`;
+  }
+  return clean;
+};
+
 interface Props {
   config: AppConfig;
   data: DashboardData | null;
@@ -25,24 +41,13 @@ export function ReportsTab({ data, loading }: Props) {
     data.payments.forEach(p => {
       let period = p.payment_period || p['kỳ thanh toán'];
       if (!period && (p.received_date || p.date)) {
-        const parts = (p.received_date || p.date).split('/');
-        if (parts.length === 3) {
-          period = `${parts[1]}/${parts[2]}`;
-        }
+        period = p.received_date || p.date;
       }
       if (period) {
-        // format as MM/YYYY if possible
-        const parts = period.split('/');
-        if (parts.length === 2) {
-          if (parts[0].length === 1) period = `0${parts[0]}/${parts[1]}`;
-        } else if (parts.length === 3) {
-          const m = parts[1].length === 1 ? `0${parts[1]}` : parts[1];
-          period = `${m}/${parts[2]}`;
-        }
-        periods.add(period);
+        periods.add(normalizePeriod(period));
       }
     });
-    periods.add(defaultPeriod); // ensure default is in list
+    periods.add(normalizePeriod(defaultPeriod));
     return Array.from(periods).sort((a, b) => {
       const [m1, y1] = a.split('/');
       const [m2, y2] = b.split('/');
@@ -57,25 +62,9 @@ export function ReportsTab({ data, loading }: Props) {
     const targetPayments = data.payments.filter(p => {
       let period = p.payment_period || p['kỳ thanh toán'];
       if (!period && (p.received_date || p.date)) {
-        const parts = (p.received_date || p.date).split('/');
-        if (parts.length === 3) {
-          period = `${parts[1]}/${parts[2]}`;
-        }
+        period = p.received_date || p.date;
       }
-      if (period) {
-        const parts = period.split('/');
-        if (parts.length === 2) {
-          if (parts[0].length === 1) period = `0${parts[0]}/${parts[1]}`;
-        } else if (parts.length === 3) {
-          const m = parts[1].length === 1 ? `0${parts[1]}` : parts[1];
-          period = `${m}/${parts[2]}`;
-        }
-      }
-      // include if period matches. Also include if type is 'Tiền phòng', 'Điện', 'Nước' etc.
-      // We assume every row matching the period is part of the report.
-      // If multiple payments per room in the same month, we should probably group them or just list them.
-      // The user wants: "tự động lấy các payments kỳ hiện tại là kỳ 5/2026"
-      return period === selectedPeriod;
+      return normalizePeriod(period) === normalizePeriod(selectedPeriod);
     });
 
     const [selMonth, selYear] = selectedPeriod.split('/').map(Number);
@@ -266,6 +255,16 @@ export function ReportsTab({ data, loading }: Props) {
   const grandTotal = filteredReportData.reduce((sum, row) => sum + row.total_revenue, 0);
   const grandDeposit = filteredReportData.reduce((sum, row) => sum + row.deposit_paid, 0);
 
+  const periodExpenses = useMemo(() => {
+    if (!data?.expenses || !selectedPeriod) return [];
+    
+    const target = normalizePeriod(selectedPeriod);
+
+    return data.expenses.filter(e => {
+      return normalizePeriod(e.period) === target;
+    });
+  }, [data, selectedPeriod]);
+
   const handleExportCSV = () => {
     const headers = [
       'STT', 'Ngày ký HĐ', 'Tầng', 'Phòng', 'TG thuê (Tháng)', 'Số ngày ở', 
@@ -296,7 +295,40 @@ export function ReportsTab({ data, loading }: Props) {
       ''
     ].map(line => `"${line}"`);
 
-    const csvContent = "\uFEFF" + headerLines.join('\n') + '\n' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+    let csvContent = "\uFEFF" + headerLines.join('\n') + '\n' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+
+    // ── Append Expenses section ──
+    if (periodExpenses.length > 0) {
+      const directExp = periodExpenses.filter(e => e.is_reimbursement !== true && e.is_reimbursement !== 'true');
+      const reimbExp = periodExpenses.filter(e => e.is_reimbursement === true || e.is_reimbursement === 'true');
+
+      csvContent += '\n\n';
+      csvContent += `"CHI PHÍ PHÁT SINH THÁNG ${selectedPeriod}"\n\n`;
+
+      if (directExp.length > 0) {
+        csvContent += '"Chi phí trực tiếp (Chủ nhà thanh toán)"\n';
+        csvContent += 'STT,Ngày,Loại,Số tiền,Ghi chú\n';
+        directExp.forEach((e, i) => {
+          csvContent += `${i + 1},${e.expense_date},${e.expense_type},${Number(e.amount) || 0},"${(e.note || '').replace(/"/g, '""')}"\n`;
+        });
+        const totalDirect = directExp.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+        csvContent += `,,TỔNG CHI TRỰC TIẾP,${totalDirect},\n`;
+      }
+
+      if (reimbExp.length > 0) {
+        csvContent += '\n"Chi hộ chủ nhà (Cần hoàn trả)"\n';
+        csvContent += 'STT,Ngày,Loại,Số tiền,Người chi hộ,Hoàn trả,Ngày hoàn trả,Ghi chú\n';
+        reimbExp.forEach((e, i) => {
+          const reimbursed = e.reimbursed === true || e.reimbursed === 'true';
+          csvContent += `${i + 1},${e.expense_date},${e.expense_type},${Number(e.amount) || 0},${e.paid_by || ''},${reimbursed ? 'Đã trả' : 'Chưa trả'},${e.reimbursed_at || ''},"${(e.note || '').replace(/"/g, '""')}"\n`;
+        });
+        const totalReimb = reimbExp.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+        csvContent += `,,TỔNG CHI HỘ,${totalReimb},,,,\n`;
+      }
+
+      const grandExpense = periodExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+      csvContent += `\n,,TỔNG CHI PHÍ THÁNG ${selectedPeriod.split('/')[0]},${grandExpense},,,,\n`;
+    }
     
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -447,6 +479,11 @@ export function ReportsTab({ data, loading }: Props) {
         </div>
       </div>
 
+      {/* ── Expense Report Table (Page 2 when printing) ── */}
+      {selectedPeriod && (
+        <ExpenseReportSection data={data} selectedPeriod={selectedPeriod} />
+      )}
+
       <style>{`
         @media print {
           @page { size: landscape; margin: 1cm; }
@@ -456,8 +493,175 @@ export function ReportsTab({ data, loading }: Props) {
           table { width: 100%; border-collapse: collapse; }
           th, td { border: 1px solid #ddd; padding: 4px; font-size: 10pt; }
           th { background-color: #f3f4f6 !important; }
+          .expense-report-page { page-break-before: always; }
         }
       `}</style>
+    </div>
+  );
+}
+
+/* ── Expense Report Sub-component ── */
+
+function ExpenseReportSection({ data, selectedPeriod }: { data: DashboardData | null; selectedPeriod: string }) {
+  const expenses = useMemo(() => {
+    if (!data?.expenses || !selectedPeriod) return [];
+    
+    const target = normalizePeriod(selectedPeriod);
+
+    return data.expenses.filter(e => {
+      return normalizePeriod(e.period) === target;
+    });
+  }, [data, selectedPeriod]);
+
+  // On screen, show a message if empty. In print, hide if empty.
+  if (expenses.length === 0) {
+    return (
+      <div className="mt-6 p-8 border-2 border-dashed border-slate-200 rounded-2xl text-center text-slate-400 print:hidden">
+        Không có dữ liệu chi phí cho kỳ {selectedPeriod} để hiển thị trong báo cáo.
+      </div>
+    );
+  }
+
+  const directExpenses = expenses.filter(e => e.is_reimbursement !== true && e.is_reimbursement !== 'true');
+  const reimbExpenses = expenses.filter(e => e.is_reimbursement === true || e.is_reimbursement === 'true');
+  const totalDirect = directExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  const totalReimb = reimbExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  const grandExpense = totalDirect + totalReimb;
+
+  return (
+    <div className="expense-report-page bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden print:shadow-none print:border-none print:rounded-none mt-6 print:mt-0 print:block">
+      {/* Print Header */}
+      <div className="p-4 border-b border-slate-100 hidden print:block mb-4 relative">
+        <div className="absolute top-4 left-4 text-left">
+          <h2 className="font-bold uppercase text-xs">Phương Nam Apartment</h2>
+        </div>
+        <div className="text-center pt-6">
+          <h1 className="text-xl font-bold uppercase">Bảng Kê Chi Phí Phát Sinh</h1>
+          <p className="text-sm mt-1">Kỳ thanh toán: {selectedPeriod}</p>
+        </div>
+      </div>
+
+      {/* Screen Header */}
+      <div className="p-4 border-b border-slate-100 print:hidden bg-slate-50/50">
+        <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+          <span className="w-1.5 h-6 bg-indigo-500 rounded-full"></span>
+          Chi phí phát sinh tháng {selectedPeriod}
+          <span className="ml-2 text-xs font-normal text-slate-400 bg-white px-2 py-1 rounded-md border border-slate-200 shadow-sm">Trang 2 khi in PDF</span>
+        </h3>
+      </div>
+
+      <div className="overflow-x-auto print:overflow-visible p-4">
+        {/* Direct Expenses */}
+        {directExpenses.length > 0 ? (
+          <div className="mb-8">
+            <h4 className="mb-3 text-sm font-bold text-slate-700 uppercase print:text-black flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-emerald-500 print:hidden"></div>
+              1. Chi phí trực tiếp (Chủ nhà thanh toán)
+            </h4>
+            <table className="w-full text-left text-sm border-collapse print:text-[10pt]">
+              <thead className="bg-slate-50 text-slate-600 print:bg-slate-100 print:text-black">
+                <tr>
+                  <th className="px-4 py-2 font-semibold border border-slate-200 print:border-slate-400 text-center w-12">STT</th>
+                  <th className="px-4 py-2 font-semibold border border-slate-200 print:border-slate-400">Ngày</th>
+                  <th className="px-4 py-2 font-semibold border border-slate-200 print:border-slate-400">Loại chi phí</th>
+                  <th className="px-4 py-2 font-semibold border border-slate-200 print:border-slate-400 text-right">Số tiền</th>
+                  <th className="px-4 py-2 font-semibold border border-slate-200 print:border-slate-400">Ghi chú</th>
+                </tr>
+              </thead>
+              <tbody>
+                {directExpenses.map((e, i) => (
+                  <tr key={e.id || i} className="hover:bg-slate-50/50">
+                    <td className="px-4 py-2 text-center text-slate-500 border border-slate-200 print:border-slate-400">{i + 1}</td>
+                    <td className="px-4 py-2 border border-slate-200 print:border-slate-400">{e.expense_date}</td>
+                    <td className="px-4 py-2 font-medium border border-slate-200 print:border-slate-400">{e.expense_type}</td>
+                    <td className="px-4 py-2 text-right font-semibold border border-slate-200 print:border-slate-400">{formatVND(e.amount)}</td>
+                    <td className="px-4 py-2 text-xs text-slate-500 border border-slate-200 print:border-slate-400">{e.note || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="bg-slate-50 font-bold print:bg-white">
+                <tr>
+                  <td colSpan={3} className="px-4 py-2 text-right border border-slate-200 print:border-slate-400 uppercase text-xs">Cộng chi phí trực tiếp</td>
+                  <td className="px-4 py-2 text-right border border-slate-200 print:border-slate-400 text-indigo-700 print:text-black">{formatVND(totalDirect)}</td>
+                  <td className="border border-slate-200 print:border-slate-400"></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        ) : (
+          <div className="mb-6 p-4 bg-slate-50 rounded-xl text-slate-400 text-sm italic print:hidden">Không có chi phí trực tiếp.</div>
+        )}
+
+        {/* Reimbursement Expenses */}
+        {reimbExpenses.length > 0 ? (
+          <div className="mb-8">
+            <h4 className="mb-3 text-sm font-bold text-slate-700 uppercase print:text-black flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-amber-500 print:hidden"></div>
+              2. Các khoản chi hộ (Cần hoàn trả)
+            </h4>
+            <table className="w-full text-left text-sm border-collapse print:text-[10pt]">
+              <thead className="bg-slate-50 text-slate-600 print:bg-slate-100 print:text-black">
+                <tr>
+                  <th className="px-4 py-2 font-semibold border border-slate-200 print:border-slate-400 text-center w-12">STT</th>
+                  <th className="px-4 py-2 font-semibold border border-slate-200 print:border-slate-400">Ngày chi</th>
+                  <th className="px-4 py-2 font-semibold border border-slate-200 print:border-slate-400">Nội dung</th>
+                  <th className="px-4 py-2 font-semibold border border-slate-200 print:border-slate-400 text-right">Số tiền</th>
+                  <th className="px-4 py-2 font-semibold border border-slate-200 print:border-slate-400">Người chi</th>
+                  <th className="px-4 py-2 font-semibold border border-slate-200 print:border-slate-400 text-center">Tình trạng</th>
+                  <th className="px-4 py-2 font-semibold border border-slate-200 print:border-slate-400">Ngày trả</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reimbExpenses.map((e, i) => {
+                  const reimbursed = e.reimbursed === true || e.reimbursed === 'true';
+                  return (
+                    <tr key={e.id || i} className="hover:bg-slate-50/50">
+                      <td className="px-4 py-2 text-center text-slate-500 border border-slate-200 print:border-slate-400">{i + 1}</td>
+                      <td className="px-4 py-2 border border-slate-200 print:border-slate-400">{e.expense_date}</td>
+                      <td className="px-4 py-2 font-medium border border-slate-200 print:border-slate-400">{e.expense_type}</td>
+                      <td className="px-4 py-2 text-right font-semibold border border-slate-200 print:border-slate-400">{formatVND(e.amount)}</td>
+                      <td className="px-4 py-2 border border-slate-200 print:border-slate-400">{e.paid_by || '—'}</td>
+                      <td className="px-4 py-2 text-center border border-slate-200 print:border-slate-400">
+                        <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold ${reimbursed ? 'bg-emerald-100 text-emerald-700' : 'bg-orange-100 text-orange-700'}`}>
+                          {reimbursed ? 'Đã trả' : 'Chưa trả'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2 border border-slate-200 print:border-slate-400">{e.reimbursed_at || '—'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot className="bg-slate-50 font-bold print:bg-white">
+                <tr>
+                  <td colSpan={3} className="px-4 py-2 text-right border border-slate-200 print:border-slate-400 uppercase text-xs">Cộng chi hộ</td>
+                  <td className="px-4 py-2 text-right border border-slate-200 print:border-slate-400 text-amber-700 print:text-black">{formatVND(totalReimb)}</td>
+                  <td colSpan={3} className="border border-slate-200 print:border-slate-400"></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        ) : (
+          <div className="mb-6 p-4 bg-slate-50 rounded-xl text-slate-400 text-sm italic print:hidden">Không có khoản chi hộ.</div>
+        )}
+
+        {/* Grand Total for Expenses */}
+        <div className="mt-4 p-4 bg-indigo-50 border border-indigo-100 rounded-xl flex justify-between items-center print:bg-white print:border-slate-400 print:rounded-none print:mt-2">
+          <span className="text-sm font-bold uppercase text-indigo-900 print:text-black">Tổng cộng chi phí phát sinh tháng {selectedPeriod.split('/')[0]}</span>
+          <span className="text-xl font-black text-indigo-700 print:text-black">{formatVND(grandExpense)}</span>
+        </div>
+
+        {/* Signature Area for Print */}
+        <div className="hidden print:grid grid-cols-2 mt-12 text-center gap-12">
+          <div>
+            <p className="font-bold">Người lập bảng</p>
+            <p className="text-xs text-slate-500 italic mt-1">(Ký và ghi rõ họ tên)</p>
+          </div>
+          <div>
+            <p className="font-bold">Chủ nhà xác nhận</p>
+            <p className="text-xs text-slate-500 italic mt-1">(Ký và ghi rõ họ tên)</p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

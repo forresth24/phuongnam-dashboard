@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { API, type AppConfig, type DashboardData, type UserRole } from '../lib/api';
-import { LayoutDashboard, BedDouble, FileText, Users, ScrollText, Settings, LogOut, Shield, PieChart } from 'lucide-react';
+import { LayoutDashboard, BedDouble, FileText, Users, ScrollText, Settings, LogOut, Shield, PieChart, Receipt } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import { OverviewTab } from './OverviewTab';
@@ -8,6 +8,7 @@ import { RoomsTab } from './RoomsTab';
 import { ContractsTab } from './ContractsTab';
 import { TenantsTab } from './TenantsTab';
 import { PaymentsTab } from './PaymentsTab';
+import { ExpensesTab } from './ExpensesTab';
 import { ReportsTab } from './ReportsTab';
 import { SettingsTab } from './SettingsTab';
 
@@ -50,6 +51,7 @@ export function MainDashboard({ config, onLogout }: { config: AppConfig, onLogou
     { id: 'contracts', label: 'Hợp đồng', icon: ScrollText },
     { id: 'tenants', label: 'Khách thuê', icon: Users },
     { id: 'payments', label: 'Thanh toán', icon: FileText },
+    { id: 'expenses', label: 'Chi phí', icon: Receipt },
     { id: 'reports', label: 'Báo cáo', icon: PieChart },
     { id: 'settings', label: 'Cài đặt', icon: Settings },
   ];
@@ -133,6 +135,7 @@ export function MainDashboard({ config, onLogout }: { config: AppConfig, onLogou
             {activeTab === 'contracts' && <ContractsTab config={config} data={data} loading={loading} role={role} onRefresh={forceRefresh} />}
             { activeTab === 'tenants' && <TenantsTab config={config} data={data} loading={loading} role={role} onRefresh={forceRefresh} /> }
             { activeTab === 'payments' && <PaymentsTab config={config} data={data} loading={loading} role={role} onRefresh={forceRefresh} /> }
+            { activeTab === 'expenses' && <ExpensesTab config={config} data={data} loading={loading} role={role} onRefresh={forceRefresh} /> }
             { activeTab === 'reports' && <ReportsTab config={config} data={data} loading={loading} /> }
             { activeTab === 'settings' && <SettingsTab config={config} data={data} loading={loading} role={role} onRefresh={forceRefresh} /> }
           </motion.div>

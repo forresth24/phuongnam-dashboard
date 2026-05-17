@@ -40,6 +40,7 @@ export interface DashboardData {
   contracts_all: any[];
   payments: any[];
   tenants: any[];
+  expenses: any[];
   settings: Record<string, number | string>;
 }
 
@@ -99,6 +100,16 @@ export const API = {
   // Settings
   updateSettings: (config: AppConfig, data: Record<string, number | string>) =>
     fetchApi<any>(config, '/api/settings', { method: 'PUT', body: JSON.stringify(data) }),
+
+  // Expenses CRUD
+  getExpenses: (config: AppConfig, period?: string) =>
+    fetchApi<any[]>(config, period ? `/api/expenses?period=${period}` : '/api/expenses'),
+  createExpense: (config: AppConfig, data: any) =>
+    fetchApi<any>(config, '/api/expenses', { method: 'POST', body: JSON.stringify(data) }),
+  updateExpense: (config: AppConfig, id: string, data: any) =>
+    fetchApi<any>(config, `/api/expenses/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteExpense: (config: AppConfig, id: string) =>
+    fetchApi<any>(config, `/api/expenses/${id}`, { method: 'DELETE' }),
 
   // PDF generation
   getContractPdf: (config: AppConfig, contractId: string) =>
