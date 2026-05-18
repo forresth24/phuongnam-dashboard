@@ -20,6 +20,14 @@ export const normalizePeriod = (pStr: string): string => {
   return clean;
 };
 
+export const safeParseNumber = (val: any): number => {
+  if (val === undefined || val === null) return 0;
+  if (typeof val === 'number') return isNaN(val) ? 0 : val;
+  const cleanStr = String(val).replace(/[^0-9-]/g, '');
+  const num = parseInt(cleanStr, 10);
+  return isNaN(num) ? 0 : num;
+};
+
 interface Props {
   config: AppConfig;
   data: DashboardData | null;
@@ -132,6 +140,7 @@ export function ReportsTab({ data, loading }: Props) {
           surcharge_total: 0,
           electric_total: 0,
           deposit_collected: 0,
+          total_revenue: 0,
           electric_old: p.electric_old || p.old_electric || p['chỉ số điện cũ'] || (contract ? contract.start_electric : 0) || 0,
           electric_new: 0,
           electric_usage: 0,
@@ -146,12 +155,12 @@ export function ReportsTab({ data, loading }: Props) {
       const receiver = p.receiver || p['người nhận'] || '';
       
       if (receiver !== 'Chưa nhận') {
-        const baseRent = Number(p.base_rent || p['tiền phòng']) || 0;
-        const water = Number(p.water_total || p['nước sinh hoạt']) || 0;
-        const surcharge = Number(p.surcharge_total || p['phí dịch vụ']) || 0;
-        const electric = Number(p.electric_total || p['điện sinh hoạt']) || 0;
-        let deposit = Number(p.deposit_amount || p.deposit_fee || p['tiền cọc']) || 0;
-        const actualAmount = Number(p.amount || p.total_amount || p['số tiền']) || 0;
+        const baseRent = safeParseNumber(p.base_rent || p['tiền phòng']);
+        const water = safeParseNumber(p.water_total || p['nước sinh hoạt']);
+        const surcharge = safeParseNumber(p.surcharge_total || p['phí dịch vụ']);
+        const electric = safeParseNumber(p.electric_total || p['điện sinh hoạt']);
+        let deposit = safeParseNumber(p.deposit_amount || p.deposit_fee || p['tiền cọc']);
+        const actualAmount = safeParseNumber(p.amount || p.total_amount || p['số tiền']);
         
         const typeStr = String(p.payment_type || p.type || p['loại khoản thu'] || '').toLowerCase();
         if (deposit === 0 && typeStr.includes('cọc')) {
@@ -218,7 +227,7 @@ export function ReportsTab({ data, loading }: Props) {
         duration: contract.duration || '',
         stayed_days: stayedDays,
         deposit_paid: group.deposit_collected,
-        rent: Number(contract.rent) || 0,
+        rent: safeParseNumber(contract.rent),
         base_rent: group.base_rent,
         water_total: group.water_total,
         surcharge_total: group.surcharge_total,
@@ -253,7 +262,11 @@ export function ReportsTab({ data, loading }: Props) {
   }, [reportData, searchTerm]);
 
   const grandTotal = filteredReportData.reduce((sum, row) => sum + row.total_revenue, 0);
-  const grandDeposit = filteredReportData.reduce((sum, row) => sum + row.deposit_paid, 0);
+  const grandBaseRent = filteredReportData.reduce((sum, row) => sum + row.base_rent, 0);
+  const grandWater = filteredReportData.reduce((sum, row) => sum + row.water_total, 0);
+  const grandSurcharge = filteredReportData.reduce((sum, row) => sum + row.surcharge_total, 0);
+  const grandElectricUsage = filteredReportData.reduce((sum, row) => sum + row.electric_usage, 0);
+  const grandElectric = filteredReportData.reduce((sum, row) => sum + row.electric_total, 0);
 
   const periodExpenses = useMemo(() => {
     if (!data?.expenses || !selectedPeriod) return [];
@@ -280,11 +293,22 @@ export function ReportsTab({ data, loading }: Props) {
       r.total_revenue, `"${r.note.replace(/"/g, '""')}"`
     ]);
 
-    // Add Grand Total row
+    // Add Column Totals row
     rows.push([
-      '', '', '', '', '', 'TỔNG CỘNG', grandDeposit, '', '', '', '', '', '', '',
-      'TỔNG DOANH THU', grandTotal, ''
+      'TỔNG CỘNG', '', '', '', '', '',
+      '',
+      '',
+      grandBaseRent,
+      grandWater,
+      grandSurcharge,
+      '', '',
+      grandElectricUsage,
+      grandElectric,
+      grandTotal,
+      ''
     ]);
+
+
 
     const headerLines = [
       'Phương Nam Apartment',
@@ -309,9 +333,9 @@ export function ReportsTab({ data, loading }: Props) {
         csvContent += '"Chi phí trực tiếp (Chủ nhà thanh toán)"\n';
         csvContent += 'STT,Ngày,Loại,Số tiền,Ghi chú\n';
         directExp.forEach((e, i) => {
-          csvContent += `${i + 1},${e.expense_date},${e.expense_type},${Number(e.amount) || 0},"${(e.note || '').replace(/"/g, '""')}"\n`;
+          csvContent += `${i + 1},${e.expense_date},${e.expense_type},${safeParseNumber(e.amount)},"${(e.note || '').replace(/"/g, '""')}"\n`;
         });
-        const totalDirect = directExp.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+        const totalDirect = directExp.reduce((s, e) => s + safeParseNumber(e.amount), 0);
         csvContent += `,,TỔNG CHI TRỰC TIẾP,${totalDirect},\n`;
       }
 
@@ -320,13 +344,13 @@ export function ReportsTab({ data, loading }: Props) {
         csvContent += 'STT,Ngày,Loại,Số tiền,Người chi hộ,Hoàn trả,Ngày hoàn trả,Ghi chú\n';
         reimbExp.forEach((e, i) => {
           const reimbursed = e.reimbursed === true || e.reimbursed === 'true';
-          csvContent += `${i + 1},${e.expense_date},${e.expense_type},${Number(e.amount) || 0},${e.paid_by || ''},${reimbursed ? 'Đã trả' : 'Chưa trả'},${e.reimbursed_at || ''},"${(e.note || '').replace(/"/g, '""')}"\n`;
+          csvContent += `${i + 1},${e.expense_date},${e.expense_type},${safeParseNumber(e.amount)},${e.paid_by || ''},${reimbursed ? 'Đã trả' : 'Chưa trả'},${e.reimbursed_at || ''},"${(e.note || '').replace(/"/g, '""')}"\n`;
         });
-        const totalReimb = reimbExp.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+        const totalReimb = reimbExp.reduce((s, e) => s + safeParseNumber(e.amount), 0);
         csvContent += `,,TỔNG CHI HỘ,${totalReimb},,,,\n`;
       }
 
-      const grandExpense = periodExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+      const grandExpense = periodExpenses.reduce((s, e) => s + safeParseNumber(e.amount), 0);
       csvContent += `\n,,TỔNG CHI PHÍ THÁNG ${selectedPeriod.split('/')[0]},${grandExpense},,,,\n`;
     }
     
@@ -459,17 +483,35 @@ export function ReportsTab({ data, loading }: Props) {
               )}
             </tbody>
             <tfoot className="bg-slate-50 font-bold text-slate-800 print:bg-white print:border-t-2 print:border-black">
-              <tr>
-                <td colSpan={6} className="px-4 py-4 text-right uppercase text-slate-700 print:text-black">
-                  TỔNG CỌC
+              {/* Detailed Column Totals Row */}
+              <tr className="border-t border-slate-200 print:border-black bg-slate-100/50 print:bg-white text-[11px] print:text-[10px]">
+                <td colSpan={6} className="px-3 py-3 text-right uppercase font-bold text-slate-600 print:text-black">
+                  TỔNG CỘNG
                 </td>
-                <td className="px-3 py-4 text-right text-slate-700 print:text-black whitespace-nowrap">
-                  {formatVND(grandDeposit)}
+                <td className="px-3 py-3 text-right text-slate-400 font-semibold whitespace-nowrap">
+                  —
                 </td>
-                <td colSpan={8} className="px-4 py-4 text-right uppercase text-indigo-700 print:text-black">
-                  TỔNG DOANH THU THÁNG {selectedPeriod.split('/')[0]}
+                <td className="px-3 py-3 text-right text-slate-400 font-semibold whitespace-nowrap">
+                  —
                 </td>
-                <td className="px-3 py-4 text-right text-lg text-indigo-700 print:text-black whitespace-nowrap">
+                <td className="px-3 py-3 text-right font-bold text-emerald-700 print:text-black whitespace-nowrap">
+                  {formatVND(grandBaseRent)}
+                </td>
+                <td className="px-3 py-3 text-right font-bold text-blue-600 print:text-black whitespace-nowrap">
+                  {formatVND(grandWater)}
+                </td>
+                <td className="px-3 py-3 text-right font-bold text-amber-600 print:text-black whitespace-nowrap">
+                  {formatVND(grandSurcharge)}
+                </td>
+                <td className="px-2 py-3 text-right text-slate-400 font-semibold">—</td>
+                <td className="px-2 py-3 text-right text-slate-400 font-semibold">—</td>
+                <td className="px-2 py-3 text-right font-bold text-slate-700 print:text-black whitespace-nowrap">
+                  {grandElectricUsage}
+                </td>
+                <td className="px-3 py-3 text-right font-bold text-rose-600 print:text-black whitespace-nowrap">
+                  {formatVND(grandElectric)}
+                </td>
+                <td className="px-3 py-3 text-right font-black text-indigo-700 print:text-black whitespace-nowrap">
                   {formatVND(grandTotal)}
                 </td>
                 <td></td>
@@ -524,8 +566,8 @@ function ExpenseReportSection({ data, selectedPeriod }: { data: DashboardData | 
 
   const directExpenses = expenses.filter(e => e.is_reimbursement !== true && e.is_reimbursement !== 'true');
   const reimbExpenses = expenses.filter(e => e.is_reimbursement === true || e.is_reimbursement === 'true');
-  const totalDirect = directExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
-  const totalReimb = reimbExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  const totalDirect = directExpenses.reduce((s, e) => s + safeParseNumber(e.amount), 0);
+  const totalReimb = reimbExpenses.reduce((s, e) => s + safeParseNumber(e.amount), 0);
   const grandExpense = totalDirect + totalReimb;
 
   return (
@@ -597,7 +639,7 @@ function ExpenseReportSection({ data, selectedPeriod }: { data: DashboardData | 
           <div className="mb-8">
             <h4 className="mb-3 text-sm font-bold text-slate-700 uppercase print:text-black flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-amber-500 print:hidden"></div>
-              2. Các khoản chi hộ (Cần hoàn trả)
+              2. Các khoản chi hộ
             </h4>
             <table className="w-full text-left text-sm border-collapse print:text-[10pt]">
               <thead className="bg-slate-50 text-slate-600 print:bg-slate-100 print:text-black">
@@ -609,6 +651,7 @@ function ExpenseReportSection({ data, selectedPeriod }: { data: DashboardData | 
                   <th className="px-4 py-2 font-semibold border border-slate-200 print:border-slate-400">Người chi</th>
                   <th className="px-4 py-2 font-semibold border border-slate-200 print:border-slate-400 text-center">Tình trạng</th>
                   <th className="px-4 py-2 font-semibold border border-slate-200 print:border-slate-400">Ngày trả</th>
+                  <th className="px-4 py-2 font-semibold border border-slate-200 print:border-slate-400">Ghi chú</th>
                 </tr>
               </thead>
               <tbody>
@@ -627,6 +670,7 @@ function ExpenseReportSection({ data, selectedPeriod }: { data: DashboardData | 
                         </span>
                       </td>
                       <td className="px-4 py-2 border border-slate-200 print:border-slate-400">{e.reimbursed_at || '—'}</td>
+                      <td className="px-4 py-2 text-xs text-slate-500 border border-slate-200 print:border-slate-400">{e.note || '—'}</td>
                     </tr>
                   );
                 })}
@@ -635,7 +679,7 @@ function ExpenseReportSection({ data, selectedPeriod }: { data: DashboardData | 
                 <tr>
                   <td colSpan={3} className="px-4 py-2 text-right border border-slate-200 print:border-slate-400 uppercase text-xs">Cộng chi hộ</td>
                   <td className="px-4 py-2 text-right border border-slate-200 print:border-slate-400 text-amber-700 print:text-black">{formatVND(totalReimb)}</td>
-                  <td colSpan={3} className="border border-slate-200 print:border-slate-400"></td>
+                  <td colSpan={4} className="border border-slate-200 print:border-slate-400"></td>
                 </tr>
               </tfoot>
             </table>
@@ -651,13 +695,17 @@ function ExpenseReportSection({ data, selectedPeriod }: { data: DashboardData | 
         </div>
 
         {/* Signature Area for Print */}
-        <div className="hidden print:grid grid-cols-2 mt-12 text-center gap-12">
+        <div className="hidden print:grid grid-cols-3 mt-12 text-center gap-6">
           <div>
-            <p className="font-bold">Người lập bảng</p>
+            <p className="font-bold">Người lập</p>
             <p className="text-xs text-slate-500 italic mt-1">(Ký và ghi rõ họ tên)</p>
           </div>
           <div>
-            <p className="font-bold">Chủ nhà xác nhận</p>
+            <p className="font-bold">Quản lý</p>
+            <p className="text-xs text-slate-500 italic mt-1">(Ký và ghi rõ họ tên)</p>
+          </div>
+          <div>
+            <p className="font-bold">Chủ đầu tư</p>
             <p className="text-xs text-slate-500 italic mt-1">(Ký và ghi rõ họ tên)</p>
           </div>
         </div>

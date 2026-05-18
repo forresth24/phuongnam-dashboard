@@ -3,6 +3,8 @@ import { Building2, KeyRound, Globe, ArrowRight } from 'lucide-react';
 import type { AppConfig } from '../lib/api';
 import { motion } from 'framer-motion';
 
+declare const __APP_VERSION__: string | undefined;
+
 interface LoginProps {
   onLogin: (config: AppConfig) => void;
 }
@@ -10,6 +12,8 @@ interface LoginProps {
 export function Login({ onLogin }: LoginProps) {
   const [apiUrl, setApiUrl] = useState(localStorage.getItem('apt_apiUrl') || '');
   const [token, setToken] = useState(localStorage.getItem('apt_token') || '');
+  
+  const appVersion = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'Dev';
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -78,6 +82,9 @@ export function Login({ onLogin }: LoginProps) {
             <ArrowRight size={20} />
           </button>
         </form>
+        <div className="mt-6 text-center text-xs text-indigo-300/40 font-mono">
+          Phiên bản: {appVersion}
+        </div>
       </motion.div>
     </div>
   );
