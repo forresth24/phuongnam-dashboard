@@ -2,7 +2,8 @@ import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { FileDown, Printer, Search } from 'lucide-react';
 import type { AppConfig, DashboardData } from '../lib/api';
-import { formatVND } from '../lib/payment-utils';
+import { formatVND as originalFormatVND } from '../lib/payment-utils';
+const formatVND = (amount: number) => originalFormatVND(amount, false);
 
 export const normalizePeriod = (pStr: string): string => {
   const clean = String(pStr || '').trim();
@@ -155,12 +156,16 @@ export function ReportsTab({ data, loading }: Props) {
       const receiver = p.receiver || p['người nhận'] || '';
       
       if (receiver !== 'Chưa nhận') {
-        const baseRent = safeParseNumber(p.base_rent || p['tiền phòng']);
+        let baseRent = safeParseNumber(p.base_rent || p['tiền phòng']);
         const water = safeParseNumber(p.water_total || p['nước sinh hoạt']);
         const surcharge = safeParseNumber(p.surcharge_total || p['phí dịch vụ']);
         const electric = safeParseNumber(p.electric_total || p['điện sinh hoạt']);
         let deposit = safeParseNumber(p.deposit_amount || p.deposit_fee || p['tiền cọc']);
         const actualAmount = safeParseNumber(p.amount || p.total_amount || p['số tiền']);
+
+        if (baseRent === 0 && actualAmount > 0) {
+          baseRent = Math.max(0, actualAmount - water - surcharge - electric);
+        }
         
         const typeStr = String(p.payment_type || p.type || p['loại khoản thu'] || '').toLowerCase();
         if (deposit === 0 && typeStr.includes('cọc')) {
@@ -185,7 +190,18 @@ export function ReportsTab({ data, loading }: Props) {
           group.stayed_days = Number(p.stayed_days || p.days_stayed || p['số ngày ở']) || 0;
       }
 
-      if (p.note) group.notes.push(p.note);
+      const typeStr = String(p.payment_type || p.type || p['loại khoản thu'] || '').toLowerCase();
+      if (typeStr.includes('cọc')) {
+        if (!group.notes.includes('Tiền cọc')) {
+          group.notes.push('Tiền cọc');
+        }
+      }
+      if (p.note) {
+        const noteClean = String(p.note).trim();
+        if (noteClean && !group.notes.includes(noteClean)) {
+          group.notes.push(noteClean);
+        }
+      }
     });
 
     const rows = Array.from(grouped.entries()).map(([contractId, group], index) => {
@@ -197,23 +213,43 @@ export function ReportsTab({ data, loading }: Props) {
       // Calculate days in month if missing
       let stayedDays = group.stayed_days;
       if (!stayedDays || stayedDays === 0) {
+        const parts = selectedPeriod.split('/');
+        const month = Number(parts[0]);
+        const year = Number(parts[1]);
+        const lastDay = new Date(year, month, 0).getDate();
+
+        let startDay = 1;
+        let endDay = lastDay;
+
         if (contract.move_in_date) {
-            const parts = selectedPeriod.split('/');
-            const month = Number(parts[0]);
-            const year = Number(parts[1]);
-            const lastDay = new Date(year, month, 0).getDate();
-            
-            // Check if move_in_date is in the reporting month
-            const miParts = contract.move_in_date.split('/'); // DD/MM/YYYY
-            if (miParts.length === 3 && Number(miParts[1]) === month && Number(miParts[2]) === year) {
-                stayedDays = lastDay - Number(miParts[0]) + 1;
-            } else {
-                stayedDays = lastDay;
-            }
-        } else {
-             const parts = selectedPeriod.split('/');
-             stayedDays = new Date(Number(parts[1]), Number(parts[0]), 0).getDate();
+          const miParts = contract.move_in_date.split('/'); // DD/MM/YYYY
+          if (miParts.length === 3 && Number(miParts[1]) === month && Number(miParts[2]) === year) {
+            startDay = Number(miParts[0]);
+          }
         }
+
+        const archiveDateStr = contract.updated_at || contract.end_date || '';
+        if (archiveDateStr) {
+          let archDate: Date | null = null;
+          if (archiveDateStr.includes('T') || archiveDateStr.includes('-')) {
+            archDate = new Date(archiveDateStr);
+          } else if (archiveDateStr.includes('/')) {
+            const parts = archiveDateStr.split(' ')[0].split('/');
+            if (parts.length === 3) {
+              archDate = new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
+            }
+          }
+
+          if (archDate && !isNaN(archDate.getTime())) {
+            const archMonth = archDate.getMonth() + 1;
+            const archYear = archDate.getFullYear();
+            if (archMonth === month && archYear === year) {
+              endDay = archDate.getDate();
+            }
+          }
+        }
+
+        stayedDays = Math.max(0, endDay - startDay + 1);
       }
 
       const noteStr = [contract.note, ...group.notes].filter(Boolean).join('; ');
@@ -227,7 +263,7 @@ export function ReportsTab({ data, loading }: Props) {
         duration: contract.duration || '',
         stayed_days: stayedDays,
         deposit_paid: group.deposit_collected,
-        rent: safeParseNumber(contract.rent),
+        rent: safeParseNumber(contract.rent) + safeParseNumber(contract.extra_person_fee),
         base_rent: group.base_rent,
         water_total: group.water_total,
         surcharge_total: group.surcharge_total,
@@ -281,22 +317,21 @@ export function ReportsTab({ data, loading }: Props) {
   const handleExportCSV = () => {
     const headers = [
       'STT', 'Ngày ký HĐ', 'Tầng', 'Phòng', 'TG thuê (Tháng)', 'Số ngày ở', 
-      'Cọc', 'Giá cho thuê', 'Giá TT thực tế (i)', 'Nước (k)', 'Phí DV (l)', 
-      'CSĐ đầu', 'CSĐ cuối', 'Tổng số điện', 'Điện (m)', 
-      'Tổng doanh thu', 'Ghi chú'
+      'Giá cho thuê (VND)', 'Giá TT thực tế (i) (VND)', 'Nước (k) (VND)', 'Phí DV (l) (VND)', 
+      'CSĐ đầu', 'CSĐ cuối', 'Tổng số điện', 'Điện (m) (VND)', 
+      'Tổng doanh thu (VND)'
     ];
     
     const rows = filteredReportData.map(r => [
       r.stt, r.move_in_date, r.floor, r.room_id, r.duration, r.stayed_days,
-      r.deposit_paid, r.rent, r.base_rent, r.water_total, r.surcharge_total,
+      r.rent, r.base_rent, r.water_total, r.surcharge_total,
       r.electric_old, r.electric_new, r.electric_usage, r.electric_total,
-      r.total_revenue, `"${r.note.replace(/"/g, '""')}"`
+      r.total_revenue
     ]);
 
     // Add Column Totals row
     rows.push([
       'TỔNG CỘNG', '', '', '', '', '',
-      '',
       '',
       grandBaseRent,
       grandWater,
@@ -304,8 +339,7 @@ export function ReportsTab({ data, loading }: Props) {
       '', '',
       grandElectricUsage,
       grandElectric,
-      grandTotal,
-      ''
+      grandTotal
     ]);
 
 
@@ -431,24 +465,23 @@ export function ReportsTab({ data, loading }: Props) {
             <thead className="bg-slate-50 text-slate-600 print:bg-white print:text-black">
               <tr>
                 <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black whitespace-nowrap text-center">STT</th>
-                <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black whitespace-nowrap">Ngày ký HĐ</th>
-                <th className="px-2 py-3 font-semibold border-b border-slate-200 print:border-black text-center">Tầng</th>
+                <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black whitespace-nowrap print:hidden">Ngày ký HĐ</th>
+                <th className="px-2 py-3 font-semibold border-b border-slate-200 print:border-black text-center print:hidden">Tầng</th>
                 <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black">Phòng</th>
                 <th className="px-2 py-3 font-semibold border-b border-slate-200 print:border-black text-center whitespace-nowrap">Thời gian<br/><span className="text-[10px] font-normal">(tháng)</span></th>
                 <th className="px-2 py-3 font-semibold border-b border-slate-200 print:border-black text-center whitespace-nowrap">Số ngày ở</th>
-                <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black text-right">Cọc</th>
-                <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black text-right">Giá cho thuê</th>
-                <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black text-right whitespace-nowrap">Thực tế (i)</th>
-                <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black text-right whitespace-nowrap">Nước (k)</th>
-                <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black text-right whitespace-nowrap">Phí DV (l)</th>
+                <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black text-right">Giá cho thuê (VND)</th>
+                <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black text-right whitespace-nowrap">Thực tế (i) (VND)</th>
+                <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black text-right whitespace-nowrap">Nước (k) (VND)</th>
+                <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black text-right whitespace-nowrap">Phí DV (l) (VND)</th>
                 
                 {/* Điện (m) có 3 cột nhỏ: CSĐ đầu, CSĐ cuối, Tổng số điện, Điện */}
                 <th className="px-2 py-3 font-semibold border-b border-slate-200 print:border-black text-right text-[10px]">CSĐ đầu</th>
                 <th className="px-2 py-3 font-semibold border-b border-slate-200 print:border-black text-right text-[10px]">CSĐ cuối</th>
                 <th className="px-2 py-3 font-semibold border-b border-slate-200 print:border-black text-right text-[10px]">Tiêu thụ</th>
-                <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black text-right whitespace-nowrap">Điện (m)</th>
+                <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black text-right whitespace-nowrap">Điện (m) (VND)</th>
                 
-                <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black text-right whitespace-nowrap text-indigo-700 print:text-black">Tổng doanh thu</th>
+                <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black text-right whitespace-nowrap text-indigo-700 print:text-black">Tổng doanh thu (VND)</th>
                 <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black min-w-[150px]">Ghi chú</th>
               </tr>
             </thead>
@@ -456,12 +489,11 @@ export function ReportsTab({ data, loading }: Props) {
               {filteredReportData.map((r, idx) => (
                 <motion.tr key={r.contract_id + idx} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="hover:bg-slate-50/50">
                   <td className="px-3 py-2 text-center text-slate-500 print:border-b print:border-slate-300">{r.stt}</td>
-                  <td className="px-3 py-2 whitespace-nowrap print:border-b print:border-slate-300">{r.move_in_date}</td>
-                  <td className="px-2 py-2 text-center font-medium text-slate-500 print:border-b print:border-slate-300">{r.floor}</td>
+                  <td className="px-3 py-2 whitespace-nowrap print:border-b print:border-slate-300 print:hidden">{r.move_in_date}</td>
+                  <td className="px-2 py-2 text-center font-medium text-slate-500 print:border-b print:border-slate-300 print:hidden">{r.floor}</td>
                   <td className="px-3 py-2 font-bold text-slate-800 print:border-b print:border-slate-300">{r.room_id}</td>
                   <td className="px-2 py-2 text-center text-slate-600 print:border-b print:border-slate-300">{r.duration}</td>
                   <td className="px-2 py-2 text-center text-slate-600 print:border-b print:border-slate-300">{r.stayed_days}</td>
-                  <td className="px-3 py-2 text-right text-slate-600 print:border-b print:border-slate-300">{formatVND(r.deposit_paid)}</td>
                   <td className="px-3 py-2 text-right text-slate-600 print:border-b print:border-slate-300">{formatVND(r.rent)}</td>
                   <td className="px-3 py-2 text-right font-medium text-emerald-600 print:border-b print:border-slate-300 print:text-black">{formatVND(r.base_rent)}</td>
                   <td className="px-3 py-2 text-right text-blue-600 print:border-b print:border-slate-300 print:text-black">{formatVND(r.water_total)}</td>
@@ -476,7 +508,10 @@ export function ReportsTab({ data, loading }: Props) {
               ))}
               {filteredReportData.length === 0 && (
                 <tr>
-                  <td colSpan={17} className="px-4 py-8 text-center text-slate-400 print:border-b print:border-slate-300">
+                  <td colSpan={16} className="px-4 py-8 text-center text-slate-400 print:hidden">
+                    {selectedPeriod ? `Không có dữ liệu cho kỳ ${selectedPeriod}` : 'Chọn Kỳ thanh toán để xem báo cáo kinh doanh'}
+                  </td>
+                  <td colSpan={14} className="px-4 py-8 text-center text-slate-400 hidden print:table-cell print:border-b print:border-slate-300">
                     {selectedPeriod ? `Không có dữ liệu cho kỳ ${selectedPeriod}` : 'Chọn Kỳ thanh toán để xem báo cáo kinh doanh'}
                   </td>
                 </tr>
@@ -485,11 +520,11 @@ export function ReportsTab({ data, loading }: Props) {
             <tfoot className="bg-slate-50 font-bold text-slate-800 print:bg-white print:border-t-2 print:border-black">
               {/* Detailed Column Totals Row */}
               <tr className="border-t border-slate-200 print:border-black bg-slate-100/50 print:bg-white text-[11px] print:text-[10px]">
-                <td colSpan={6} className="px-3 py-3 text-right uppercase font-bold text-slate-600 print:text-black">
+                <td colSpan={6} className="px-3 py-3 text-right uppercase font-bold text-slate-600 print:hidden">
                   TỔNG CỘNG
                 </td>
-                <td className="px-3 py-3 text-right text-slate-400 font-semibold whitespace-nowrap">
-                  —
+                <td colSpan={4} className="px-3 py-3 text-right uppercase font-bold text-slate-600 hidden print:table-cell">
+                  TỔNG CỘNG
                 </td>
                 <td className="px-3 py-3 text-right text-slate-400 font-semibold whitespace-nowrap">
                   —
@@ -528,14 +563,49 @@ export function ReportsTab({ data, loading }: Props) {
 
       <style>{`
         @media print {
-          @page { size: landscape; margin: 1cm; }
-          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; background: white !important; }
+          @page { size: portrait; margin: 0; }
+          * { 
+            color: #000 !important; 
+          }
+          body { 
+            -webkit-print-color-adjust: exact !important; 
+            print-color-adjust: exact !important; 
+            background: white !important; 
+            margin: 0 !important; 
+            padding: 1.25cm !important;
+            font-size: 23pt !important;
+            line-height: 1.25 !important;
+          }
           .print\\:hidden { display: none !important; }
           .print\\:block { display: block !important; }
-          table { width: 100%; border-collapse: collapse; }
-          th, td { border: 1px solid #ddd; padding: 4px; font-size: 10pt; }
-          th { background-color: #f3f4f6 !important; }
-          .expense-report-page { page-break-before: always; }
+          table { 
+            width: 100% !important; 
+            border-collapse: collapse !important; 
+            border: 2px solid #000 !important;
+            page-break-inside: auto !important;
+          }
+          tr {
+            page-break-inside: avoid !important;
+            page-break-after: auto !important;
+          }
+          thead {
+            display: table-header-group !important;
+          }
+          th, td { 
+            border: 2px solid #000 !important; 
+            padding: 8px !important; 
+            font-size: 22pt !important; 
+            line-height: 1.25 !important;
+            white-space: normal !important;
+            word-break: break-word !important;
+          }
+          th { 
+            background-color: #f3f4f6 !important; 
+          }
+          h1 { font-size: 34pt !important; font-weight: bold !important; line-height: 1.3 !important; }
+          h2 { font-size: 29pt !important; font-weight: bold !important; line-height: 1.3 !important; }
+          h3, h4 { font-size: 23pt !important; font-weight: bold !important; line-height: 1.3 !important; }
+          .expense-report-page { page-break-before: auto !important; }
         }
       `}</style>
     </div>
@@ -606,7 +676,7 @@ function ExpenseReportSection({ data, selectedPeriod }: { data: DashboardData | 
                   <th className="px-4 py-2 font-semibold border border-slate-200 print:border-slate-400 text-center w-12">STT</th>
                   <th className="px-4 py-2 font-semibold border border-slate-200 print:border-slate-400">Ngày</th>
                   <th className="px-4 py-2 font-semibold border border-slate-200 print:border-slate-400">Loại chi phí</th>
-                  <th className="px-4 py-2 font-semibold border border-slate-200 print:border-slate-400 text-right">Số tiền</th>
+                  <th className="px-4 py-2 font-semibold border border-slate-200 print:border-slate-400 text-right">Số tiền (VND)</th>
                   <th className="px-4 py-2 font-semibold border border-slate-200 print:border-slate-400">Ghi chú</th>
                 </tr>
               </thead>
@@ -647,7 +717,7 @@ function ExpenseReportSection({ data, selectedPeriod }: { data: DashboardData | 
                   <th className="px-4 py-2 font-semibold border border-slate-200 print:border-slate-400 text-center w-12">STT</th>
                   <th className="px-4 py-2 font-semibold border border-slate-200 print:border-slate-400">Ngày chi</th>
                   <th className="px-4 py-2 font-semibold border border-slate-200 print:border-slate-400">Nội dung</th>
-                  <th className="px-4 py-2 font-semibold border border-slate-200 print:border-slate-400 text-right">Số tiền</th>
+                  <th className="px-4 py-2 font-semibold border border-slate-200 print:border-slate-400 text-right">Số tiền (VND)</th>
                   <th className="px-4 py-2 font-semibold border border-slate-200 print:border-slate-400">Người chi</th>
                   <th className="px-4 py-2 font-semibold border border-slate-200 print:border-slate-400 text-center">Tình trạng</th>
                   <th className="px-4 py-2 font-semibold border border-slate-200 print:border-slate-400">Ngày trả</th>
