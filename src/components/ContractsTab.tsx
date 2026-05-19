@@ -72,6 +72,11 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
   const [sortBy, setSortBy] = useState<string>('room_id');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
+  // Sub-contract member selection modal state
+  const [subContractModalOpen, setSubContractModalOpen] = useState(false);
+  const [subContractActiveContract, setSubContractActiveContract] = useState<any>(null);
+  const [selectedTenants, setSelectedTenants] = useState<string[]>([]);
+
   if (loading) return <div className="flex h-64 items-center justify-center"><Loader2 className="animate-spin text-indigo-500" size={32} /></div>;
   if (!data) return null;
 
@@ -246,6 +251,48 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
     setPdfLoading(null);
   };
 
+  const handleExportSubContracts = async () => {
+    if (!subContractActiveContract || selectedTenants.length === 0) return;
+    
+    setPdfLoading(`sub_contract_${subContractActiveContract.id}`);
+    
+    try {
+      const roomTenants = data.tenants.filter((t: any) => String(t.room_id).trim() === String(subContractActiveContract.room_id).trim());
+      
+      const items = roomTenants.length > 0 ? roomTenants : [
+        {
+          id: 'representative',
+          name: subContractActiveContract.tenant,
+          phone: subContractActiveContract.phone || 'N/A',
+          cccd: subContractActiveContract.cccd || 'N/A'
+        }
+      ];
+
+      for (const tenantId of selectedTenants) {
+        const t = items.find((item: any) => item.id === tenantId);
+        const tName = t ? t.name : subContractActiveContract.tenant;
+        
+        let res;
+        if (tenantId === 'representative') {
+          res = await API.getSubContractPdf(config, subContractActiveContract.id);
+        } else {
+          res = await API.getSubContractPdf(config, subContractActiveContract.id, tenantId);
+        }
+        
+        if (res) {
+          const cleanName = tName ? tName.trim().replace(/\s+/g, '_') : 'ThanhVien';
+          const filename = `HopDongPhu_${subContractActiveContract.room_id}_${cleanName}.pdf`;
+          downloadBase64Pdf(res.base64, filename);
+        }
+      }
+      setSubContractModalOpen(false);
+    } catch (e: any) {
+      alert('Lỗi tạo PDF HĐ Phụ: ' + e.message);
+    }
+    
+    setPdfLoading(null);
+  };
+
   const F = (k: string, v: any) => {
     setForm({ ...form, [k]: v });
     if ((errors as any)[k]) setErrors({ ...errors, [k]: undefined });
@@ -306,8 +353,20 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
                           title="Xuất PDF Hợp đồng" className="p-1.5 rounded-lg hover:bg-blue-50 text-slate-400 hover:text-blue-600 disabled:opacity-50">
                           {pdfLoading === `contract_${c.id}` ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} />}
                         </button>
-                        <button onClick={() => handlePdf(c.id, 'sub_contract')} disabled={pdfLoading === `sub_contract_${c.id}`}
-                          title="Xuất PDF HĐ Phụ" className="p-1.5 rounded-lg hover:bg-emerald-50 text-slate-400 hover:text-emerald-600 disabled:opacity-50">
+                        <button 
+                          onClick={() => {
+                            const roomTenants = data.tenants.filter((t: any) => String(t.room_id).trim() === String(c.room_id).trim());
+                            setSubContractActiveContract(c);
+                            if (roomTenants.length > 0) {
+                              setSelectedTenants(roomTenants.map((t: any) => t.id));
+                            } else {
+                              setSelectedTenants(['representative']);
+                            }
+                            setSubContractModalOpen(true);
+                          }} 
+                          disabled={pdfLoading !== null}
+                          title="Xuất PDF HĐ Phụ" className="p-1.5 rounded-lg hover:bg-emerald-50 text-slate-400 hover:text-emerald-600 disabled:opacity-50"
+                        >
                           {pdfLoading === `sub_contract_${c.id}` ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} />}
                         </button>
                         {isAdmin && <button onClick={() => openEdit(c)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-indigo-600"><Pencil size={14} /></button>}
@@ -480,6 +539,113 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
         </label>
         <p className="text-xs text-amber-600/80 mt-1">Ghi chú "Khách bỏ cọc" vào hợp đồng và thanh toán.</p>
       </ConfirmDialog>
+
+      {/* Sub-Contract Member Selection Modal */}
+      <Modal 
+        open={subContractModalOpen} 
+        onClose={() => setSubContractModalOpen(false)} 
+        title={`Xuất Hợp đồng phụ — Phòng ${subContractActiveContract?.room_id || ''}`} 
+        maxWidth="max-w-md"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-slate-500">
+            Chọn thành viên để xuất hợp đồng phụ (mỗi người sẽ xuất thành 1 bản PDF riêng biệt):
+          </p>
+
+          {/* Member List */}
+          <div className="border border-slate-100 rounded-xl divide-y divide-slate-100 overflow-hidden max-h-60 overflow-y-auto bg-slate-50/50">
+            {subContractActiveContract && (() => {
+              const roomTenants = data.tenants.filter((t: any) => String(t.room_id).trim() === String(subContractActiveContract.room_id).trim());
+              
+              const items = roomTenants.length > 0 ? roomTenants : [
+                {
+                  id: 'representative',
+                  name: subContractActiveContract.tenant,
+                  phone: subContractActiveContract.phone || 'N/A',
+                  cccd: subContractActiveContract.cccd || 'N/A'
+                }
+              ];
+
+              const allSelected = items.every(item => selectedTenants.includes(item.id));
+              const someSelected = items.some(item => selectedTenants.includes(item.id)) && !allSelected;
+
+              return (
+                <>
+                  {/* Select All Row */}
+                  <div className="flex items-center px-4 py-3 bg-white font-medium text-xs text-slate-600">
+                    <label className="flex items-center gap-3 cursor-pointer w-full select-none">
+                      <input 
+                        type="checkbox" 
+                        checked={allSelected}
+                        ref={el => {
+                          if (el) el.indeterminate = someSelected;
+                        }}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedTenants(items.map(item => item.id));
+                          } else {
+                            setSelectedTenants([]);
+                          }
+                        }}
+                        className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
+                      />
+                      <span>Chọn tất cả ({items.length})</span>
+                    </label>
+                  </div>
+
+                  {/* Individual Member Rows */}
+                  {items.map((t: any) => {
+                    const isSelected = selectedTenants.includes(t.id);
+                    return (
+                      <div key={t.id} className="flex items-center px-4 py-3 hover:bg-slate-50 bg-white transition-colors">
+                        <label className="flex items-start gap-3 cursor-pointer w-full select-none">
+                          <input 
+                            type="checkbox" 
+                            checked={isSelected}
+                            onChange={() => {
+                              if (isSelected) {
+                                setSelectedTenants(selectedTenants.filter(id => id !== t.id));
+                              } else {
+                                setSelectedTenants([...selectedTenants, t.id]);
+                              }
+                            }}
+                            className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4 mt-0.5 cursor-pointer"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-bold text-slate-800 truncate">{t.name}</p>
+                            <p className="text-xs text-slate-500 mt-0.5">
+                              SĐT: <span className="font-mono">{t.phone || 'N/A'}</span>
+                              {t.cccd && <> • CCCD: <span className="font-mono">{t.cccd}</span></>}
+                            </p>
+                          </div>
+                        </label>
+                      </div>
+                    );
+                  })}
+                </>
+              );
+            })()}
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex gap-3 pt-2">
+            <button 
+              onClick={() => setSubContractModalOpen(false)}
+              className="flex-1 border border-slate-200 hover:bg-slate-50 text-slate-700 py-2.5 rounded-xl font-medium transition-colors text-sm"
+            >
+              Hủy
+            </button>
+            <button 
+              onClick={handleExportSubContracts} 
+              disabled={selectedTenants.length === 0 || pdfLoading !== null}
+              className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-xl font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2 text-sm shadow-sm shadow-emerald-100"
+            >
+              {pdfLoading !== null && <Loader2 size={16} className="animate-spin" />}
+              Xuất PDF ({selectedTenants.length} bản)
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
