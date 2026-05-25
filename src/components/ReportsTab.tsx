@@ -272,6 +272,7 @@ export function ReportsTab({ data, loading }: Props) {
         electric_new: group.electric_new,
         electric_usage: group.electric_usage,
         total_revenue: group.total_revenue,
+        net_revenue: group.total_revenue - group.deposit_collected,
         note: noteStr
       };
     });
@@ -297,7 +298,8 @@ export function ReportsTab({ data, loading }: Props) {
     );
   }, [reportData, searchTerm]);
 
-  const grandTotal = filteredReportData.reduce((sum, row) => sum + row.total_revenue, 0);
+  const grandDeposit = filteredReportData.reduce((sum, row) => sum + row.deposit_paid, 0);
+  const grandNetRevenue = filteredReportData.reduce((sum, row) => sum + row.net_revenue, 0);
   const grandBaseRent = filteredReportData.reduce((sum, row) => sum + row.base_rent, 0);
   const grandWater = filteredReportData.reduce((sum, row) => sum + row.water_total, 0);
   const grandSurcharge = filteredReportData.reduce((sum, row) => sum + row.surcharge_total, 0);
@@ -316,17 +318,18 @@ export function ReportsTab({ data, loading }: Props) {
 
   const handleExportCSV = () => {
     const headers = [
-      'STT', 'Ngày ký HĐ', 'Tầng', 'Phòng', 'TG thuê (Tháng)', 'Số ngày ở', 
-      'Giá cho thuê (VND)', 'Giá TT thực tế (i) (VND)', 'Nước (k) (VND)', 'Phí DV (l) (VND)', 
-      'CSĐ đầu', 'CSĐ cuối', 'Tổng số điện', 'Điện (m) (VND)', 
-      'Tổng doanh thu (VND)'
+      'STT', 'Ngày ký HĐ', 'Tầng', 'Phòng', 'TG thuê (Tháng)', 'Số ngày ở',
+      'Giá cho thuê (VND)', 'Giá TT thực tế (i) (VND)', 'Nước (k) (VND)', 'Phí DV (l) (VND)',
+      'CSĐ đầu', 'CSĐ cuối', 'Tổng số điện', 'Điện (m) (VND)',
+      'Khoản phải trả (VND)',
+      'Tổng cộng (ii) (VND)'
     ];
-    
+
     const rows = filteredReportData.map(r => [
       r.stt, r.move_in_date, r.floor, r.room_id, r.duration, r.stayed_days,
       r.rent, r.base_rent, r.water_total, r.surcharge_total,
       r.electric_old, r.electric_new, r.electric_usage, r.electric_total,
-      r.total_revenue
+      r.deposit_paid, r.net_revenue
     ]);
 
     // Add Column Totals row
@@ -339,7 +342,8 @@ export function ReportsTab({ data, loading }: Props) {
       '', '',
       grandElectricUsage,
       grandElectric,
-      grandTotal
+      grandDeposit,
+      grandNetRevenue
     ]);
 
 
@@ -480,8 +484,10 @@ export function ReportsTab({ data, loading }: Props) {
                 <th className="px-2 py-3 font-semibold border-b border-slate-200 print:border-black text-right text-[10px]">CSĐ cuối</th>
                 <th className="px-2 py-3 font-semibold border-b border-slate-200 print:border-black text-right text-[10px]">Tiêu thụ</th>
                 <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black text-right whitespace-nowrap">Điện (m) (VND)</th>
-                
-                <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black text-right whitespace-nowrap text-indigo-700 print:text-black">Tổng doanh thu (VND)</th>
+
+                <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black text-right whitespace-nowrap text-amber-700 print:text-black">Khoản phải trả (VND)</th>
+
+                <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black text-right whitespace-nowrap text-indigo-700 print:text-black">Tổng cộng (ii) (VND)</th>
                 <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black min-w-[150px]">Ghi chú</th>
               </tr>
             </thead>
@@ -502,16 +508,17 @@ export function ReportsTab({ data, loading }: Props) {
                   <td className="px-2 py-2 text-right text-slate-500 text-xs print:border-b print:border-slate-300">{r.electric_new}</td>
                   <td className="px-2 py-2 text-right text-slate-700 font-medium text-xs print:border-b print:border-slate-300">{r.electric_usage}</td>
                   <td className="px-3 py-2 text-right text-rose-600 print:border-b print:border-slate-300 print:text-black">{formatVND(r.electric_total)}</td>
-                  <td className="px-3 py-2 text-right font-bold text-indigo-600 print:border-b print:border-slate-300 print:text-black">{formatVND(r.total_revenue)}</td>
+                  <td className="px-3 py-2 text-right text-amber-600 print:border-b print:border-slate-300 print:text-black">{formatVND(r.deposit_paid)}</td>
+                  <td className="px-3 py-2 text-right font-bold text-indigo-600 print:border-b print:border-slate-300 print:text-black">{formatVND(r.net_revenue)}</td>
                   <td className="px-3 py-2 text-xs text-slate-500 max-w-[200px] truncate print:whitespace-normal print:border-b print:border-slate-300" title={r.note}>{r.note || '—'}</td>
                 </motion.tr>
               ))}
               {filteredReportData.length === 0 && (
                 <tr>
-                  <td colSpan={16} className="px-4 py-8 text-center text-slate-400 print:hidden">
+                  <td colSpan={17} className="px-4 py-8 text-center text-slate-400 print:hidden">
                     {selectedPeriod ? `Không có dữ liệu cho kỳ ${selectedPeriod}` : 'Chọn Kỳ thanh toán để xem báo cáo kinh doanh'}
                   </td>
-                  <td colSpan={14} className="px-4 py-8 text-center text-slate-400 hidden print:table-cell print:border-b print:border-slate-300">
+                  <td colSpan={15} className="px-4 py-8 text-center text-slate-400 hidden print:table-cell print:border-b print:border-slate-300">
                     {selectedPeriod ? `Không có dữ liệu cho kỳ ${selectedPeriod}` : 'Chọn Kỳ thanh toán để xem báo cáo kinh doanh'}
                   </td>
                 </tr>
@@ -546,8 +553,11 @@ export function ReportsTab({ data, loading }: Props) {
                 <td className="px-3 py-3 text-right font-bold text-rose-600 print:text-black whitespace-nowrap">
                   {formatVND(grandElectric)}
                 </td>
+                <td className="px-3 py-3 text-right font-bold text-amber-700 print:text-black whitespace-nowrap">
+                  {formatVND(grandDeposit)}
+                </td>
                 <td className="px-3 py-3 text-right font-black text-indigo-700 print:text-black whitespace-nowrap">
-                  {formatVND(grandTotal)}
+                  {formatVND(grandNetRevenue)}
                 </td>
                 <td></td>
               </tr>

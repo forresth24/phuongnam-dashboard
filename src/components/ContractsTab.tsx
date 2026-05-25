@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Pencil, Trash2, Archive, Loader2, FileDown, FileText, ArrowUpDown, ChevronUp, ChevronDown } from 'lucide-react';
+import { Plus, Pencil, Trash2, Archive, Loader2, FileDown, FileText, ArrowUpDown, ChevronUp, ChevronDown, RefreshCw } from 'lucide-react';
 import { API, downloadBase64Pdf } from '../lib/api';
 import type { AppConfig, DashboardData, UserRole } from '../lib/api';
 import { Badge } from './ui/Badge';
@@ -69,11 +69,14 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
   const [forfeitDeposit, setForfeitDeposit] = useState(false);
   const [acting, setActing] = useState(false);
   const [finalElectricReading, setFinalElectricReading] = useState<string>('');
+  const [debtTotal, setDebtTotal] = useState<string>('');
+  const [cleaningFee, setCleaningFee] = useState<string>('');
   const [showCalcBreakdown, setShowCalcBreakdown] = useState(false);
   const [calculatedConsumption, setCalculatedConsumption] = useState(0);
   const [calculatedElectricCost, setCalculatedElectricCost] = useState(0);
   const [calculatedRefund, setCalculatedRefund] = useState(0);
   const [pdfLoading, setPdfLoading] = useState<string | null>(null);
+  const [restoringId, setRestoringId] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<string>('room_id');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
@@ -268,12 +271,14 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
             const dd = String(now.getDate()).padStart(2, '0');
             const mm = String(now.getMonth() + 1).padStart(2, '0');
             const yyyy = now.getFullYear();
-            await API.createExpense(config, {
-              expense_type: 'Trả cọc',
+            await API.createPayable(config, {
+              contract_id: contract.id,
+              room_id: contract.room_id,
+              tenant: contract.tenant,
               amount: refundAmount,
-              expense_date: `${dd}/${mm}/${yyyy}`,
-              period: `${mm}/${yyyy}`,
-              is_reimbursement: false,
+              status: 'pending',
+              payable_type: 'Trả cọc',
+              contract_ended_at: `${dd}/${mm}/${yyyy}`,
               note,
             });
           }
@@ -310,16 +315,21 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
       const startElectric = Number(contract.start_electric) || 0;
       const finalReading = finalElectricReading ? Number(finalElectricReading) : NaN;
       const electricPrice = Number(data?.settings?.ELECTRIC_PRICE) || 3500;
+      const debt = Number(debtTotal) || 0;
+      const cleaning = Number(cleaningFee) || 0;
 
       let consumption = 0;
       let electricCost = 0;
+      let totalDeductions = debt + cleaning;
       let refundAmount = deposit;
 
       if (!isNaN(finalReading) && finalReading > startElectric) {
         consumption = finalReading - startElectric;
         electricCost = consumption * electricPrice;
+        totalDeductions += electricCost;
         refundAmount = Math.max(0, deposit - electricCost);
       }
+      refundAmount = Math.max(0, deposit - totalDeductions);
 
       const res = await API.getTerminationPdf(config, contract.id, {
         final_electric_reading: !isNaN(finalReading) ? finalReading : undefined,
@@ -327,11 +337,24 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
         electric_cost: electricCost || undefined,
         electric_price: electricPrice,
         refund_amount: refundAmount,
+        debt_total: debt || undefined,
+        cleaning_fee: cleaning || undefined,
       });
 
       if (res) downloadBase64Pdf(res.base64, res.filename);
     } catch (e: any) { alert('Lỗi tạo PDF Biên bản thanh lý: ' + e.message); }
     setPdfLoading(null);
+  };
+
+  const handleRestore = async (id: string) => {
+    setRestoringId(id);
+    try {
+      await API.restoreContract(config, id);
+      onRefresh();
+    } catch (e: any) {
+      alert('Lỗi khôi phục hợp đồng: ' + e.message);
+    }
+    setRestoringId(null);
   };
 
   const handleExportSubContracts = async () => {
@@ -454,8 +477,15 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
                         </button>
                         {isAdmin && c.status === 'active' && <button onClick={() => handleTerminationPdf(c)} disabled={pdfLoading === `termination_${c.id}`} title="Biên bản thanh lý HĐ" className="p-1.5 rounded-lg hover:bg-violet-50 text-slate-400 hover:text-violet-600 disabled:opacity-50">{pdfLoading === `termination_${c.id}` ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}</button>}
                         {isAdmin && <button onClick={() => openEdit(c)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-indigo-600"><Pencil size={14} /></button>}
-                        {isAdmin && c.status === 'active' && <button onClick={() => { setArchiveId(c.id); setForfeitDeposit(false); setFinalElectricReading(''); setShowCalcBreakdown(false); }} title="Kết thúc & Archive" className="p-1.5 rounded-lg hover:bg-amber-50 text-slate-400 hover:text-amber-600"><Archive size={14} /></button>}
+                        {isAdmin && c.status === 'active' && <button onClick={() => { setArchiveId(c.id); setForfeitDeposit(false); setFinalElectricReading(''); setDebtTotal(''); setCleaningFee(''); setShowCalcBreakdown(false); }} title="Kết thúc & Archive" className="p-1.5 rounded-lg hover:bg-amber-50 text-slate-400 hover:text-amber-600"><Archive size={14} /></button>}
                         {isAdmin && <button onClick={() => setDeleteId(c.id)} className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600"><Trash2 size={14} /></button>}
+                        {isAdmin && c.status !== 'active' && (
+                          <button onClick={() => handleRestore(c.id)} disabled={restoringId === c.id} title="Khôi phục hợp đồng"
+                            className="p-1.5 rounded-lg hover:bg-emerald-50 text-slate-400 hover:text-emerald-600 disabled:opacity-50"
+                          >
+                            {restoringId === c.id ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                          </button>
+                        )}
                       </div>
                     </td>
                 </motion.tr>
@@ -642,7 +672,9 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
                         const electricCost = consumption * electricPrice;
                         setCalculatedConsumption(consumption);
                         setCalculatedElectricCost(electricCost);
-                        setCalculatedRefund(Math.max(0, (Number(contract.deposit_paid) || 0) - electricCost));
+                        const debt = Number(debtTotal) || 0;
+                        const cleaning = Number(cleaningFee) || 0;
+                        setCalculatedRefund(Math.max(0, (Number(contract.deposit_paid) || 0) - electricCost - debt - cleaning));
                         setShowCalcBreakdown(true);
                       } else {
                         setShowCalcBreakdown(false);
@@ -655,6 +687,28 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
                   className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                 />
               </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Nợ kỳ trước (nếu có)</label>
+                  <input
+                    type="number"
+                    value={debtTotal}
+                    onChange={e => setDebtTotal(e.target.value)}
+                    placeholder="0"
+                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Phí vệ sinh (nếu có)</label>
+                  <input
+                    type="number"
+                    value={cleaningFee}
+                    onChange={e => setCleaningFee(e.target.value)}
+                    placeholder="0"
+                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  />
+                </div>
+              </div>
               {showCalcBreakdown && (
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs space-y-1">
                   <p className="text-slate-700">Điện tiêu thụ: {calculatedConsumption} kWh</p>
@@ -662,7 +716,7 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
                   <p className="text-blue-800 font-semibold text-sm">Tiền cọc còn lại: {formatVND(calculatedRefund)}</p>
                 </div>
               )}
-              <p className="text-xs text-slate-400">Để trống nếu trả đủ tiền cọc.</p>
+              <p className="text-xs text-slate-400">Để trống nếu trả đủ tiền cọc và không có khoản trừ khác.</p>
             </div>
           )}
           {forfeitDeposit && (

@@ -41,6 +41,7 @@ export interface DashboardData {
   payments: any[];
   tenants: any[];
   expenses: any[];
+  payables: any[];
   settings: Record<string, number | string>;
 }
 
@@ -75,6 +76,8 @@ export const API = {
     fetchApi<any>(config, `/api/contracts/${id}`, { method: 'DELETE' }),
   endContract: (config: AppConfig, id: string, options?: any) =>
     fetchApi<any>(config, `/api/contracts/${id}/end`, { method: 'POST', body: JSON.stringify(options || {}) }),
+  restoreContract: (config: AppConfig, id: string) =>
+    fetchApi<any>(config, `/api/contracts/${id}/restore`, { method: 'POST' }),
 
   // Payments CRUD
   createPayment: (config: AppConfig, data: any) =>
@@ -111,6 +114,14 @@ export const API = {
   deleteExpense: (config: AppConfig, id: string) =>
     fetchApi<any>(config, `/api/expenses/${id}`, { method: 'DELETE' }),
 
+  // Payables CRUD
+  getPayables: (config: AppConfig) =>
+    fetchApi<any[]>(config, '/api/payables'),
+  createPayable: (config: AppConfig, data: any) =>
+    fetchApi<any>(config, '/api/payables', { method: 'POST', body: JSON.stringify(data) }),
+  updatePayable: (config: AppConfig, id: string, data: any) =>
+    fetchApi<any>(config, `/api/payables/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+
   // PDF generation
   getContractPdf: (config: AppConfig, contractId: string) =>
     fetchApi<{ base64: string; filename: string }>(config, `/api/pdf/contract/${contractId}`),
@@ -128,6 +139,9 @@ export const API = {
     electric_cost?: string | number;
     electric_price?: string | number;
     refund_amount?: string | number;
+    other_deductions?: string | number;
+    debt_total?: string | number;
+    cleaning_fee?: string | number;
   }) => {
     const params = new URLSearchParams();
     if (options?.final_electric_reading) params.set('final_electric_reading', String(options.final_electric_reading));
@@ -135,6 +149,9 @@ export const API = {
     if (options?.electric_cost) params.set('electric_cost', String(options.electric_cost));
     if (options?.electric_price) params.set('electric_price', String(options.electric_price));
     if (options?.refund_amount) params.set('refund_amount', String(options.refund_amount));
+    if (options?.other_deductions) params.set('other_deductions', String(options.other_deductions));
+    if (options?.debt_total) params.set('debt_total', String(options.debt_total));
+    if (options?.cleaning_fee) params.set('cleaning_fee', String(options.cleaning_fee));
     const qs = params.toString();
     return fetchApi<{ base64: string; filename: string }>(config, `/api/pdf/termination/${contractId}${qs ? '?' + qs : ''}`);
   },
