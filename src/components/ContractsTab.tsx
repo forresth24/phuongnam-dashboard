@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Pencil, Trash2, Archive, Loader2, FileDown, ArrowUpDown, ChevronUp, ChevronDown } from 'lucide-react';
+import { Plus, Pencil, Trash2, Archive, Loader2, FileDown, FileText, ArrowUpDown, ChevronUp, ChevronDown } from 'lucide-react';
 import { API, downloadBase64Pdf } from '../lib/api';
 import type { AppConfig, DashboardData, UserRole } from '../lib/api';
 import { Badge } from './ui/Badge';
@@ -68,6 +68,11 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
   const [archiveId, setArchiveId] = useState<string | null>(null);
   const [forfeitDeposit, setForfeitDeposit] = useState(false);
   const [acting, setActing] = useState(false);
+  const [finalElectricReading, setFinalElectricReading] = useState<string>('');
+  const [showCalcBreakdown, setShowCalcBreakdown] = useState(false);
+  const [calculatedConsumption, setCalculatedConsumption] = useState(0);
+  const [calculatedElectricCost, setCalculatedElectricCost] = useState(0);
+  const [calculatedRefund, setCalculatedRefund] = useState(0);
   const [pdfLoading, setPdfLoading] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<string>('room_id');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
@@ -233,7 +238,54 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
   const handleArchive = async () => {
     if (!archiveId) return;
     setActing(true);
-    try { await API.endContract(config, archiveId, { forfeitDeposit }); setArchiveId(null); setForfeitDeposit(false); onRefresh(); }
+    try {
+      await API.endContract(config, archiveId, {
+        forfeitDeposit,
+        final_electric_reading: finalElectricReading || undefined,
+      });
+
+      if (!forfeitDeposit) {
+        const contract = (data?.contracts_all || data?.contracts || []).find((c: any) => c.id === archiveId);
+        if (contract) {
+          const depositAmount = Number(contract.deposit_paid) || 0;
+          let refundAmount = depositAmount;
+          let note = `Trả cọc - Phòng ${contract.room_id} - ${contract.tenant}`;
+
+          if (finalElectricReading) {
+            const startElectric = Number(contract.start_electric) || 0;
+            const finalReading = Number(finalElectricReading);
+            if (!isNaN(finalReading) && finalReading > startElectric) {
+              const consumption = finalReading - startElectric;
+              const electricPrice = Number(data?.settings?.ELECTRIC_PRICE) || 3500;
+              const electricCost = consumption * electricPrice;
+              refundAmount = Math.max(0, depositAmount - electricCost);
+              note += ` (Điện: ${finalReading} - ${startElectric} = ${consumption}kWh x ${formatVND(electricPrice, false)} = ${formatVND(electricCost, false)})`;
+            }
+          }
+
+          if (refundAmount > 0) {
+            const now = new Date();
+            const dd = String(now.getDate()).padStart(2, '0');
+            const mm = String(now.getMonth() + 1).padStart(2, '0');
+            const yyyy = now.getFullYear();
+            await API.createExpense(config, {
+              expense_type: 'Trả cọc',
+              amount: refundAmount,
+              expense_date: `${dd}/${mm}/${yyyy}`,
+              period: `${mm}/${yyyy}`,
+              is_reimbursement: false,
+              note,
+            });
+          }
+        }
+      }
+
+      setArchiveId(null);
+      setForfeitDeposit(false);
+      setFinalElectricReading('');
+      setShowCalcBreakdown(false);
+      onRefresh();
+    }
     catch (e: any) { alert('Lỗi: ' + e.message); }
     setActing(false);
   };
@@ -248,6 +300,37 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
       
       if (res) downloadBase64Pdf(res.base64, res.filename);
     } catch (e: any) { alert('Lỗi tạo PDF: ' + e.message); }
+    setPdfLoading(null);
+  };
+
+  const handleTerminationPdf = async (contract: any) => {
+    setPdfLoading(`termination_${contract.id}`);
+    try {
+      const deposit = Number(contract.deposit_paid) || 0;
+      const startElectric = Number(contract.start_electric) || 0;
+      const finalReading = finalElectricReading ? Number(finalElectricReading) : NaN;
+      const electricPrice = Number(data?.settings?.ELECTRIC_PRICE) || 3500;
+
+      let consumption = 0;
+      let electricCost = 0;
+      let refundAmount = deposit;
+
+      if (!isNaN(finalReading) && finalReading > startElectric) {
+        consumption = finalReading - startElectric;
+        electricCost = consumption * electricPrice;
+        refundAmount = Math.max(0, deposit - electricCost);
+      }
+
+      const res = await API.getTerminationPdf(config, contract.id, {
+        final_electric_reading: !isNaN(finalReading) ? finalReading : undefined,
+        electric_consumption: consumption || undefined,
+        electric_cost: electricCost || undefined,
+        electric_price: electricPrice,
+        refund_amount: refundAmount,
+      });
+
+      if (res) downloadBase64Pdf(res.base64, res.filename);
+    } catch (e: any) { alert('Lỗi tạo PDF Biên bản thanh lý: ' + e.message); }
     setPdfLoading(null);
   };
 
@@ -369,8 +452,9 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
                         >
                           {pdfLoading === `sub_contract_${c.id}` ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} />}
                         </button>
+                        {isAdmin && c.status === 'active' && <button onClick={() => handleTerminationPdf(c)} disabled={pdfLoading === `termination_${c.id}`} title="Biên bản thanh lý HĐ" className="p-1.5 rounded-lg hover:bg-violet-50 text-slate-400 hover:text-violet-600 disabled:opacity-50">{pdfLoading === `termination_${c.id}` ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}</button>}
                         {isAdmin && <button onClick={() => openEdit(c)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-indigo-600"><Pencil size={14} /></button>}
-                        {isAdmin && c.status === 'active' && <button onClick={() => { setArchiveId(c.id); setForfeitDeposit(false); }} title="Kết thúc & Archive" className="p-1.5 rounded-lg hover:bg-amber-50 text-slate-400 hover:text-amber-600"><Archive size={14} /></button>}
+                        {isAdmin && c.status === 'active' && <button onClick={() => { setArchiveId(c.id); setForfeitDeposit(false); setFinalElectricReading(''); setShowCalcBreakdown(false); }} title="Kết thúc & Archive" className="p-1.5 rounded-lg hover:bg-amber-50 text-slate-400 hover:text-amber-600"><Archive size={14} /></button>}
                         {isAdmin && <button onClick={() => setDeleteId(c.id)} className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600"><Trash2 size={14} /></button>}
                       </div>
                     </td>
@@ -533,11 +617,58 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
 
       <ConfirmDialog open={!!deleteId} onClose={() => setDeleteId(null)} onConfirm={handleDelete} loading={acting} message="Xóa hợp đồng này? Dữ liệu sẽ được lưu vào history." />
       <ConfirmDialog open={!!archiveId} onClose={() => setArchiveId(null)} onConfirm={handleArchive} loading={acting} title="Kết thúc & Archive" confirmLabel="Kết thúc HĐ" message="Kết thúc hợp đồng này? Hợp đồng sẽ được chuyển vào sheet archived_contracts. Thanh toán sẽ được giữ lại.">
-        <label className="flex items-center justify-center gap-2 text-sm text-slate-700 bg-amber-50 p-3 rounded-lg border border-amber-200 cursor-pointer">
-          <input type="checkbox" checked={forfeitDeposit} onChange={e => setForfeitDeposit(e.target.checked)} className="rounded text-amber-600 focus:ring-amber-500 w-4 h-4" />
-          <span className="font-medium text-amber-800">Khách bỏ cọc?</span>
-        </label>
-        <p className="text-xs text-amber-600/80 mt-1">Ghi chú "Khách bỏ cọc" vào hợp đồng và thanh toán.</p>
+        <div className="space-y-3">
+          <label className="flex items-center justify-center gap-2 text-sm text-slate-700 bg-amber-50 p-3 rounded-lg border border-amber-200 cursor-pointer">
+            <input type="checkbox" checked={forfeitDeposit} onChange={e => setForfeitDeposit(e.target.checked)} className="rounded text-amber-600 focus:ring-amber-500 w-4 h-4" />
+            <span className="font-medium text-amber-800">Khách bỏ cọc?</span>
+          </label>
+          {!forfeitDeposit && (
+            <div className="space-y-2">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Chỉ số điện cuối (nếu có)</label>
+                <input
+                  type="number"
+                  value={finalElectricReading}
+                  onChange={e => {
+                    const v = e.target.value;
+                    setFinalElectricReading(v);
+                    const contract = (data?.contracts_all || data?.contracts || []).find((c: any) => c.id === archiveId);
+                    if (contract && v) {
+                      const startElectric = Number(contract.start_electric) || 0;
+                      const finalReading = Number(v);
+                      if (!isNaN(finalReading) && finalReading > startElectric) {
+                        const consumption = finalReading - startElectric;
+                        const electricPrice = Number(data?.settings?.ELECTRIC_PRICE) || 3500;
+                        const electricCost = consumption * electricPrice;
+                        setCalculatedConsumption(consumption);
+                        setCalculatedElectricCost(electricCost);
+                        setCalculatedRefund(Math.max(0, (Number(contract.deposit_paid) || 0) - electricCost));
+                        setShowCalcBreakdown(true);
+                      } else {
+                        setShowCalcBreakdown(false);
+                      }
+                    } else {
+                      setShowCalcBreakdown(false);
+                    }
+                  }}
+                  placeholder="Nhập chỉ số điện mới"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                />
+              </div>
+              {showCalcBreakdown && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs space-y-1">
+                  <p className="text-slate-700">Điện tiêu thụ: {calculatedConsumption} kWh</p>
+                  <p className="text-slate-700">Tiền điện: {formatVND(calculatedElectricCost)}</p>
+                  <p className="text-blue-800 font-semibold text-sm">Tiền cọc còn lại: {formatVND(calculatedRefund)}</p>
+                </div>
+              )}
+              <p className="text-xs text-slate-400">Để trống nếu trả đủ tiền cọc.</p>
+            </div>
+          )}
+          {forfeitDeposit && (
+            <p className="text-xs text-amber-600/80">Ghi chú "Khách bỏ cọc" vào hợp đồng và thanh toán.</p>
+          )}
+        </div>
       </ConfirmDialog>
 
       {/* Sub-Contract Member Selection Modal */}

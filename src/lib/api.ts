@@ -122,6 +122,22 @@ export const API = {
   },
   getReceiptPdf: (config: AppConfig, paymentId: string) =>
     fetchApi<{ base64: string; filename: string }>(config, `/api/pdf/receipt/${paymentId}`),
+  getTerminationPdf: (config: AppConfig, contractId: string, options?: {
+    final_electric_reading?: string | number;
+    electric_consumption?: string | number;
+    electric_cost?: string | number;
+    electric_price?: string | number;
+    refund_amount?: string | number;
+  }) => {
+    const params = new URLSearchParams();
+    if (options?.final_electric_reading) params.set('final_electric_reading', String(options.final_electric_reading));
+    if (options?.electric_consumption) params.set('electric_consumption', String(options.electric_consumption));
+    if (options?.electric_cost) params.set('electric_cost', String(options.electric_cost));
+    if (options?.electric_price) params.set('electric_price', String(options.electric_price));
+    if (options?.refund_amount) params.set('refund_amount', String(options.refund_amount));
+    const qs = params.toString();
+    return fetchApi<{ base64: string; filename: string }>(config, `/api/pdf/termination/${contractId}${qs ? '?' + qs : ''}`);
+  },
 };
 
 /** Download a base64 PDF as a file */

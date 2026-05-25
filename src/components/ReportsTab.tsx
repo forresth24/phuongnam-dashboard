@@ -517,7 +517,7 @@ export function ReportsTab({ data, loading }: Props) {
                 </tr>
               )}
             </tbody>
-            <tfoot className="bg-slate-50 font-bold text-slate-800 print:bg-white print:border-t-2 print:border-black">
+            <tbody className="bg-slate-50 font-bold text-slate-800 print:bg-white print:border-t-2 print:border-black">
               {/* Detailed Column Totals Row */}
               <tr className="border-t border-slate-200 print:border-black bg-slate-100/50 print:bg-white text-[11px] print:text-[10px]">
                 <td colSpan={6} className="px-3 py-3 text-right uppercase font-bold text-slate-600 print:hidden">
@@ -551,7 +551,7 @@ export function ReportsTab({ data, loading }: Props) {
                 </td>
                 <td></td>
               </tr>
-            </tfoot>
+            </tbody>
           </table>
         </div>
       </div>
@@ -691,13 +691,13 @@ function ExpenseReportSection({ data, selectedPeriod }: { data: DashboardData | 
                   </tr>
                 ))}
               </tbody>
-              <tfoot className="bg-slate-50 font-bold print:bg-white">
+              <tbody className="bg-slate-50 font-bold print:bg-white">
                 <tr>
                   <td colSpan={3} className="px-4 py-2 text-right border border-slate-200 print:border-slate-400 uppercase text-xs">Cộng chi phí trực tiếp</td>
                   <td className="px-4 py-2 text-right border border-slate-200 print:border-slate-400 text-indigo-700 print:text-black">{formatVND(totalDirect)}</td>
                   <td className="border border-slate-200 print:border-slate-400"></td>
                 </tr>
-              </tfoot>
+              </tbody>
             </table>
           </div>
         ) : (
@@ -745,13 +745,13 @@ function ExpenseReportSection({ data, selectedPeriod }: { data: DashboardData | 
                   );
                 })}
               </tbody>
-              <tfoot className="bg-slate-50 font-bold print:bg-white">
+              <tbody className="bg-slate-50 font-bold print:bg-white">
                 <tr>
                   <td colSpan={3} className="px-4 py-2 text-right border border-slate-200 print:border-slate-400 uppercase text-xs">Cộng chi hộ</td>
                   <td className="px-4 py-2 text-right border border-slate-200 print:border-slate-400 text-amber-700 print:text-black">{formatVND(totalReimb)}</td>
                   <td colSpan={4} className="border border-slate-200 print:border-slate-400"></td>
                 </tr>
-              </tfoot>
+              </tbody>
             </table>
           </div>
         ) : (

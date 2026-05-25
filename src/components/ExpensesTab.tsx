@@ -12,7 +12,7 @@ interface Props {
   onRefresh: () => void;
 }
 
-const EXPENSE_TYPES = ['Rác', 'Điện', 'Nước', 'Internet', 'Bảo trì', 'Sửa chữa', 'Khác'];
+const EXPENSE_TYPES = ['Rác', 'Điện', 'Nước', 'Internet', 'Bảo trì', 'Sửa chữa', 'Trả cọc', 'Khác'];
 
 const TYPE_COLORS: Record<string, string> = {
   'Rác': 'bg-lime-100 text-lime-700',
@@ -21,6 +21,7 @@ const TYPE_COLORS: Record<string, string> = {
   'Internet': 'bg-violet-100 text-violet-700',
   'Bảo trì': 'bg-orange-100 text-orange-700',
   'Sửa chữa': 'bg-rose-100 text-rose-700',
+  'Trả cọc': 'bg-cyan-100 text-cyan-700',
   'Khác': 'bg-slate-100 text-slate-600',
 };
 
