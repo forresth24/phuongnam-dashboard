@@ -33,6 +33,7 @@ interface ContractForm {
   children_count: number | string;
   move_in_date: string;
   start_date: string;
+  start_date_mode: string;
   duration: number;
   rent: number;
   deposit_paid: number;
@@ -45,7 +46,7 @@ interface ContractForm {
 }
 const makeEmptyForm = (): ContractForm => ({
   room_id: '', tenant: '', phone: '', cccd: '', people_count: 1, children_count: 0,
-  move_in_date: todayStr(), start_date: '', duration: 1, rent: 0, deposit_paid: 0,
+  move_in_date: todayStr(), start_date: '', start_date_mode: 'first_of_month', duration: 3, rent: 0, deposit_paid: 0,
   start_electric: 0, discount: 0, extra_person_fee: 0, note: '', end_date: '', tenant_id: '',
 });
 
@@ -169,7 +170,7 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
     setForm({
       room_id: String(c.room_id || ''), tenant: String(c.tenant || ''), phone: String(c.phone || ''), cccd: tenantCccd,
       people_count: c.people_count || 1, children_count: c.children_count || 0,
-      move_in_date: String(c.move_in_date || c.start_date || ''), start_date: String(c.start_date || ''), duration: durationMonths,
+      move_in_date: String(c.move_in_date || c.start_date || ''), start_date: String(c.start_date || ''), start_date_mode: 'first_of_month', duration: durationMonths,
       rent: c.rent || 0, deposit_paid: c.deposit_paid || 0, start_electric: c.start_electric || 0,
       discount: c.discount || 0, extra_person_fee: c.extra_person_fee || 0, note: String(c.note || ''), end_date: c.end_date || '',
       tenant_id: String(c.tenant_id || ''),
@@ -583,6 +584,29 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Ngày vào ở (tính tiền HĐ mới)</label>
             <DatePickerInput id="input-contract-move-in" value={form.move_in_date} onChange={v => F('move_in_date', v)} />
+          </div>
+          {/* Start date mode */}
+          <div className="col-span-2">
+            <label className="block text-xs font-medium text-slate-600 mb-1">Ngày bắt đầu hợp đồng</label>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { value: 'first_of_month', label: 'Đầu tháng' },
+                { value: 'move_in_date', label: 'Ngày vào ở' },
+                { value: 'current_date', label: 'Ngày hiện tại' },
+                { value: 'custom', label: 'Chọn ngày' },
+              ].map(opt => (
+                <button key={opt.value} type="button" onClick={() => setForm({ ...form, start_date_mode: opt.value, start_date: opt.value === 'custom' ? (form.start_date || form.move_in_date) : '' })}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${form.start_date_mode === opt.value ? 'bg-indigo-100 border-indigo-300 text-indigo-700' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'}`}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            {form.start_date_mode === 'custom' && (
+              <div className="mt-2">
+                <label className="block text-xs font-medium text-slate-500 mb-1">Chọn ngày bắt đầu</label>
+                <DatePickerInput id="input-contract-start-date" value={form.start_date} onChange={v => F('start_date', v)} />
+              </div>
+            )}
           </div>
           {/* Duration */}
           <div>

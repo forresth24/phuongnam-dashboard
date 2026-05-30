@@ -30,6 +30,8 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
   const [editItem, setEditItem] = useState<any>(null);
   const [initialForm, setInitialForm] = useState<PaymentFormData>(makeEmptyPaymentForm());
   const [exportingId, setExportingId] = useState<string | null>(null);
+  const [pdfExportItem, setPdfExportItem] = useState<any>(null);
+  const [pdfDebtOverride, setPdfDebtOverride] = useState(0);
   const [completeItem, setCompleteItem] = useState<any>(null);
   const [completeReceiver, setCompleteReceiver] = useState('');
   const [completeMethod, setCompleteMethod] = useState('Tiền mặt');
@@ -215,11 +217,21 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
     setDeleting(false);
   };
 
-  const handleExportPdf = async (id: string) => {
+  const handleExportPdfClick = (payment: any) => {
+    setPdfExportItem(payment);
+    setPdfDebtOverride(Number(payment.previous_debt) || Number(payment['nợ kỳ trước']) || 0);
+  };
+
+  const handlePdfExportConfirm = async () => {
+    if (!pdfExportItem) return;
+    const id = pdfExportItem.id;
     setExportingId(id);
+    setPdfExportItem(null);
     try {
+      await API.updatePayment(config, id, { previous_debt: pdfDebtOverride });
       const res = await API.getReceiptPdf(config, id);
       downloadBase64Pdf(res.base64, res.filename);
+      onRefresh();
     } catch (e: any) {
       alert('Lỗi xuất PDF: ' + e.message);
     }
@@ -460,7 +472,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
                         <button onClick={() => openEdit(p)} title="Sửa thanh toán" className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-indigo-600">
                           <Pencil size={14} />
                         </button>
-                        <button onClick={() => handleExportPdf(p.id)} disabled={exportingId === p.id} 
+                        <button onClick={() => handleExportPdfClick(p)} disabled={exportingId === p.id}
                           title={(!p.receiver || p.receiver === 'Chưa nhận') ? "Xuất PDF Thông báo thanh toán" : "Xuất PDF Biên lai"}
                           className="p-1.5 rounded-lg hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 disabled:opacity-50">
                           {exportingId === p.id ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
@@ -551,6 +563,44 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
             </button>
           </div>
         </div>
+      </Modal>
+
+      {/* PDF Export Override Popup */}
+      <Modal open={!!pdfExportItem} onClose={() => setPdfExportItem(null)} title={pdfExportItem && (!pdfExportItem.receiver || pdfExportItem.receiver === 'Chưa nhận') ? 'Xuất Thông báo thanh toán' : 'Xuất Biên lai'} maxWidth="max-w-sm">
+        {pdfExportItem && (
+          <div className="space-y-4">
+            <div className="bg-slate-50 rounded-xl p-3 text-sm space-y-1">
+              <p>Phòng: <span className="font-medium text-slate-900">{getRoomName(pdfExportItem.contract_id)}</span></p>
+              <p>Mã: <span className="font-mono text-xs text-slate-500">{pdfExportItem.id}</span></p>
+              <p>Loại: <span className="font-medium">{pdfExportItem.payment_type}</span></p>
+              <p>Số tiền: <span className="font-bold text-indigo-600">{formatVND(pdfExportItem.amount)}</span></p>
+              <p>Kỳ: <span className="font-medium">{pdfExportItem.payment_period || pdfExportItem['kỳ thanh toán'] || '—'}</span></p>
+            </div>
+            <div className="border-t border-amber-100 pt-3">
+              <label className="block text-sm font-bold text-amber-700 mb-1">Nợ kỳ trước (ghi đè)</label>
+              <input
+                type="number"
+                value={pdfDebtOverride}
+                onChange={e => setPdfDebtOverride(Number(e.target.value) || 0)}
+                step="1000" inputMode="numeric"
+                className="w-full border-2 border-amber-200 bg-amber-50/30 rounded-xl px-3 py-2.5 text-sm text-amber-800 font-medium focus:ring-2 focus:ring-amber-400 focus:border-amber-400 focus:outline-none"
+                placeholder="0"
+              />
+              <p className="text-[11px] text-slate-400 mt-1.5">Giá trị này sẽ được lưu và sử dụng trong PDF. Có thể để trống nếu không có nợ.</p>
+            </div>
+            <div className="flex gap-3 pt-1">
+              <button onClick={() => setPdfExportItem(null)}
+                className="flex-1 px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">
+                Hủy
+              </button>
+              <button onClick={handlePdfExportConfirm} disabled={exportingId === pdfExportItem?.id}
+                className="flex-1 px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-sm font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm shadow-amber-100">
+                {exportingId === pdfExportItem?.id ? <Loader2 size={16} className="animate-spin" /> : <FileText size={16} />}
+                Xuất PDF
+              </button>
+            </div>
+          </div>
+        )}
       </Modal>
 
       <ConfirmDialog open={!!deleteId} title="Xóa thanh toán" message="Bạn có chắc chắn muốn xóa khoản thanh toán này? Hành động này không thể hoàn tác."

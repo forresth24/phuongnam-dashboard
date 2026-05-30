@@ -65,6 +65,23 @@ export function ReportsTab({ data, loading }: Props) {
     });
   }, [data, defaultPeriod]);
 
+  // Deposit collected per contract (across ALL payments, not just current period)
+  // because deposit is a one-time payment, not monthly
+  const depositPaidByContract = useMemo(() => {
+    const map: Record<string, number> = {};
+    if (!data?.payments) return map;
+    for (const p of data.payments) {
+      const cId = p.contract_id || '';
+      if (cId) {
+        const deposit = safeParseNumber(p.deposit_amount || p.deposit_fee || p['tiền cọc']);
+        if (deposit > 0) {
+          map[cId] = (map[cId] || 0) + deposit;
+        }
+      }
+    }
+    return map;
+  }, [data]);
+
   const reportData = useMemo(() => {
     if (!data || !selectedPeriod) return [];
 
@@ -262,7 +279,7 @@ export function ReportsTab({ data, loading }: Props) {
         room_id: roomId,
         duration: contract.duration || '',
         stayed_days: stayedDays,
-        deposit_paid: group.deposit_collected,
+        deposit_paid: depositPaidByContract[contractId] || 0,
         rent: safeParseNumber(contract.rent) + safeParseNumber(contract.extra_person_fee),
         base_rent: group.base_rent,
         water_total: group.water_total,
@@ -321,7 +338,7 @@ export function ReportsTab({ data, loading }: Props) {
       'STT', 'Ngày ký HĐ', 'Tầng', 'Phòng', 'TG thuê (Tháng)', 'Số ngày ở',
       'Giá cho thuê (VND)', 'Giá TT thực tế (i) (VND)', 'Nước (k) (VND)', 'Phí DV (l) (VND)',
       'CSĐ đầu', 'CSĐ cuối', 'Tổng số điện', 'Điện (m) (VND)',
-      'Khoản phải trả (VND)',
+      'Khoản phải trả (Tiền cọc) (VND)',
       'Tổng cộng (ii) (VND)'
     ];
 
@@ -485,7 +502,7 @@ export function ReportsTab({ data, loading }: Props) {
                 <th className="px-2 py-3 font-semibold border-b border-slate-200 print:border-black text-right text-[10px]">Tiêu thụ</th>
                 <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black text-right whitespace-nowrap">Điện (m) (VND)</th>
 
-                <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black text-right whitespace-nowrap text-amber-700 print:text-black">Khoản phải trả (VND)</th>
+                <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black text-right whitespace-nowrap text-amber-700 print:text-black">Khoản phải trả (Tiền cọc) (VND)</th>
 
                 <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black text-right whitespace-nowrap text-indigo-700 print:text-black">Tổng cộng (ii) (VND)</th>
                 <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black min-w-[150px]">Ghi chú</th>
@@ -569,6 +586,10 @@ export function ReportsTab({ data, loading }: Props) {
       {/* ── Expense Report Table (Page 2 when printing) ── */}
       {selectedPeriod && (
         <ExpenseReportSection data={data} selectedPeriod={selectedPeriod} />
+      )}
+
+      {selectedPeriod && (
+        <PayablesSection data={data} selectedPeriod={selectedPeriod} />
       )}
 
       <style>{`
@@ -789,6 +810,92 @@ function ExpenseReportSection({ data, selectedPeriod }: { data: DashboardData | 
             <p className="text-xs text-slate-500 italic mt-1">(Ký và ghi rõ họ tên)</p>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Payables Section ── */
+
+function PayablesSection({ data, selectedPeriod }: { data: DashboardData | null; selectedPeriod: string }) {
+  const periodPayables = useMemo(() => {
+    if (!data?.payables || !selectedPeriod) return [];
+    const [selMonth, selYear] = selectedPeriod.split('/').map(Number);
+    return data.payables.filter((p: any) => {
+      const createdAt = p.created_at || '';
+      let pMonth = -1, pYear = -1;
+      if (createdAt.includes('T')) {
+        const datePart = createdAt.split('T')[0];
+        const parts = datePart.split('-');
+        if (parts.length === 3) { pYear = Number(parts[0]); pMonth = Number(parts[1]); }
+      }
+      if (pMonth === -1 && createdAt.includes('/')) {
+        const parts = createdAt.split('/');
+        if (parts.length === 3) { pMonth = Number(parts[1]); pYear = Number(parts[2]); }
+      }
+      return pMonth === selMonth && pYear === selYear;
+    });
+  }, [data, selectedPeriod]);
+
+  if (periodPayables.length === 0) return null;
+
+  const totalPayables = periodPayables.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden print:shadow-none print:border-none print:rounded-none mt-6">
+      <div className="p-4 border-b border-slate-100 bg-red-50/30">
+        <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+          <span className="w-1.5 h-6 bg-red-500 rounded-full"></span>
+          Khoản phải trả thực tế tháng {selectedPeriod}
+        </h3>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-sm">
+          <thead className="bg-slate-50 text-slate-600">
+            <tr>
+              <th className="px-4 py-3 font-semibold border-b border-slate-200">Phòng</th>
+              <th className="px-4 py-3 font-semibold border-b border-slate-200">Khách thuê</th>
+              <th className="px-4 py-3 font-semibold border-b border-slate-200 text-right">Số tiền (VND)</th>
+              <th className="px-4 py-3 font-semibold border-b border-slate-200 text-center">Loại</th>
+              <th className="px-4 py-3 font-semibold border-b border-slate-200 text-center">Trạng thái</th>
+              <th className="px-4 py-3 font-semibold border-b border-slate-200">Ghi chú</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {periodPayables.map((p: any, idx: number) => {
+              const isPaid = p.status === 'paid' || p.status === 'true';
+              return (
+                <tr key={p.id || idx} className="hover:bg-slate-50/50">
+                  <td className="px-4 py-3 font-bold text-slate-800">{p.room_id}</td>
+                  <td className="px-4 py-3 text-slate-700">{p.tenant}</td>
+                  <td className="px-4 py-3 text-right font-semibold text-red-600">
+                    {new Intl.NumberFormat('en-US').format(Number(p.amount) || 0)} VND
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600">
+                      {p.payable_type || 'Trả cọc'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${isPaid ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                      {isPaid ? 'Đã trả' : 'Chưa trả'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-xs text-slate-500 max-w-[200px] truncate" title={p.note}>{p.note || '—'}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+          <tbody className="bg-red-50/50 font-bold">
+            <tr>
+              <td colSpan={2} className="px-4 py-3 text-right uppercase text-xs text-slate-600">Tổng khoản phải trả</td>
+              <td className="px-4 py-3 text-right text-red-700">
+                {new Intl.NumberFormat('en-US').format(totalPayables)} VND
+              </td>
+              <td colSpan={3}></td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
   );

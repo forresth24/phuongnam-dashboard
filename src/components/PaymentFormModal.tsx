@@ -394,6 +394,7 @@ export function PaymentFormModal({
         surcharge_total: finalBreakdown.living_fee,
         water_total: finalBreakdown.water_fee,
         electric_total: finalBreakdown.electric_fee,
+        previous_debt: form.previous_debt || 0,
         old_electric: form.old_electric,
         new_electric: form.new_electric,
         electric_usage: Math.max(0, form.new_electric - form.old_electric),
