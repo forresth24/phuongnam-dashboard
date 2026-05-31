@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Plus, Trash2, CheckCircle2, Loader2, FileText, Pencil, ArrowUpDown, ChevronUp, ChevronDown, Search, Filter, ArrowRightCircle } from 'lucide-react';
 import type { AppConfig, DashboardData, UserRole } from '../lib/api';
@@ -32,6 +32,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
   const [exportingId, setExportingId] = useState<string | null>(null);
   const [pdfExportItem, setPdfExportItem] = useState<any>(null);
   const [pdfDebtOverride, setPdfDebtOverride] = useState(0);
+  const pdfOriginalDebtRef = useRef(0);
   const [completeItem, setCompleteItem] = useState<any>(null);
   const [completeReceiver, setCompleteReceiver] = useState('');
   const [completeMethod, setCompleteMethod] = useState('Tiền mặt');
@@ -219,7 +220,9 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
 
   const handleExportPdfClick = (payment: any) => {
     setPdfExportItem(payment);
-    setPdfDebtOverride(Number(payment.previous_debt) || Number(payment['nợ kỳ trước']) || 0);
+    const orig = Number(payment.previous_debt) || Number(payment['nợ kỳ trước']) || 0;
+    setPdfDebtOverride(orig);
+    pdfOriginalDebtRef.current = orig;
   };
 
   const handlePdfExportConfirm = async () => {
@@ -228,10 +231,11 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
     setExportingId(id);
     setPdfExportItem(null);
     try {
-      await API.updatePayment(config, id, { previous_debt: pdfDebtOverride });
+      const changed = pdfDebtOverride !== pdfOriginalDebtRef.current;
+      if (changed) await API.updatePayment(config, id, { previous_debt: pdfDebtOverride });
       const res = await API.getReceiptPdf(config, id);
       downloadBase64Pdf(res.base64, res.filename);
-      onRefresh();
+      if (changed) onRefresh();
     } catch (e: any) {
       alert('Lỗi xuất PDF: ' + e.message);
     }

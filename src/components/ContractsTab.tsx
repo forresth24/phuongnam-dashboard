@@ -90,7 +90,7 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
   if (!data) return null;
 
   const isAdmin = role === 'admin';
-  const rawContracts = filter === 'active' ? data.contracts : data.contracts_all;
+  const rawContracts = filter === 'active' ? data.contracts : (filter === 'ended' ? data.contracts_all.filter((c: any) => c.status !== 'active') : data.contracts_all);
   const { min: minMonths, max: maxMonths } = getContractMonthRange(data.settings);
 
   const sortedContracts = [...rawContracts].sort((a, b) => {
@@ -132,20 +132,11 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
     return sortOrder === 'asc' ? <ChevronUp size={12} className="ml-1 text-indigo-500" /> : <ChevronDown size={12} className="ml-1 text-indigo-500" />;
   };
 
-  const displayRange = (start: string, end: string) => {
+  const displayRange = (start: string, end: string, duration?: number) => {
     if (!start || !end) return `${start || '—'} → ${end || '—'}`;
-    const p1 = start.split('/');
-    const p2 = end.split('/');
-    if (p1.length === 3 && p2.length === 3) {
-      const m1 = Number(p1[1]), y1 = Number(p1[2]);
-      const m2 = Number(p2[1]), y2 = Number(p2[2]);
-      let diffMonths = (y2 - y1) * 12 + (m2 - m1);
-      // If end day is at least start day - 1, count it as a full month
-      const d1 = Number(p1[0]), d2 = Number(p2[0]);
-      if (d2 >= d1 - 1) diffMonths += 1;
-      return `${Math.max(1, diffMonths)} tháng (${start} → ${end})`;
-    }
-    return `${start} → ${end}`;
+    const prefix = duration ? `${duration} tháng (` : '';
+    const suffix = duration ? ')' : '';
+    return `${prefix}${start} → ${end}${suffix}`;
   };
 
   const openCreate = () => {
@@ -415,6 +406,7 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
         <div className="flex gap-2 items-center">
           <div className="flex bg-slate-100 rounded-xl p-1">
             <button onClick={() => setFilter('active')} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filter === 'active' ? 'bg-white shadow text-indigo-700' : 'text-slate-500'}`}>Đang hoạt động</button>
+            <button onClick={() => setFilter('ended')} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filter === 'ended' ? 'bg-white shadow text-indigo-700' : 'text-slate-500'}`}>Đã kết thúc</button>
             <button onClick={() => setFilter('all')} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filter === 'all' ? 'bg-white shadow text-indigo-700' : 'text-slate-500'}`}>Tất cả</button>
           </div>
           {isAdmin && (
@@ -450,7 +442,7 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
                   <td className="px-4 py-3 font-medium">{c.room_id}</td>
                   <td className="px-4 py-3">{c.tenant}</td>
                   <td className="px-4 py-3 text-slate-500">{c.phone}</td>
-                  <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{displayRange(c.start_date, c.end_date)}</td>
+                  <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{displayRange(c.start_date, c.end_date, c.duration)}</td>
                   <td className="px-4 py-3 font-medium text-indigo-600">{formatVND(c.rent)}</td>
                   <td className="px-4 py-3">{formatVND(c.deposit_paid || 0)}</td>
                   <td className="px-4 py-3"><Badge variant={c.status === 'active' ? 'success' : 'neutral'}>{c.status === 'active' ? 'Đang hoạt động' : 'Đã kết thúc'}</Badge></td>
@@ -476,7 +468,7 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
                         >
                           {pdfLoading === `sub_contract_${c.id}` ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} />}
                         </button>
-                        {isAdmin && c.status === 'active' && <button onClick={() => handleTerminationPdf(c)} disabled={pdfLoading === `termination_${c.id}`} title="Biên bản thanh lý HĐ" className="p-1.5 rounded-lg hover:bg-violet-50 text-slate-400 hover:text-violet-600 disabled:opacity-50">{pdfLoading === `termination_${c.id}` ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}</button>}
+                        {isAdmin && c.status !== 'active' && <button onClick={() => handleTerminationPdf(c)} disabled={pdfLoading === `termination_${c.id}`} title="Biên bản thanh lý HĐ" className="p-1.5 rounded-lg hover:bg-violet-50 text-slate-400 hover:text-violet-600 disabled:opacity-50">{pdfLoading === `termination_${c.id}` ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}</button>}
                         {isAdmin && <button onClick={() => openEdit(c)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-indigo-600"><Pencil size={14} /></button>}
                         {isAdmin && c.status === 'active' && <button onClick={() => { setArchiveId(c.id); setForfeitDeposit(false); setFinalElectricReading(''); setDebtTotal(''); setCleaningFee(''); setShowCalcBreakdown(false); }} title="Kết thúc & Archive" className="p-1.5 rounded-lg hover:bg-amber-50 text-slate-400 hover:text-amber-600"><Archive size={14} /></button>}
                         {isAdmin && <button onClick={() => setDeleteId(c.id)} className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600"><Trash2 size={14} /></button>}
