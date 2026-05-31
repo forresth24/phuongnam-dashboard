@@ -58,7 +58,7 @@ interface FieldError {
 }
 
 export function ContractsTab({ config, data, loading, role, onRefresh }: Props) {
-  const [filter, setFilter] = useState<'active' | 'all'>('active');
+  const [filter, setFilter] = useState<'active' | 'ended' | 'all'>('active');
   const [modalOpen, setModalOpen] = useState(false);
   const [editItem, setEditItem] = useState<any>(null);
   const [form, setForm] = useState<ContractForm>(makeEmptyForm());
