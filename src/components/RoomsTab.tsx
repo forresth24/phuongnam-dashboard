@@ -53,6 +53,17 @@ export function RoomsTab({ config, data, loading, role, onRefresh, onNavigate }:
   const getActiveContract = (roomId: string) =>
     data.contracts.find((c: any) => String(c.room_id).trim() === String(roomId).trim());
 
+  const getContractTenantName = (contract: any) => {
+    if (!contract) return '';
+    const t = data.tenants.find((t: any) => t.id === contract.tenant_id);
+    return t ? t.name : '';
+  };
+  const getContractTenantPhone = (contract: any) => {
+    if (!contract) return '';
+    const t = data.tenants.find((t: any) => t.id === contract.tenant_id);
+    return t ? t.phone : '';
+  };
+
   const { month, year } = getCurrentMonthYear();
   const currentPeriod = `${String(month).padStart(2, '0')}/${year}`;
 
@@ -106,8 +117,8 @@ export function RoomsTab({ config, data, loading, role, onRefresh, onNavigate }:
       room_id: room.id,
       contract_id: contract ? contract.id : '',
       start_date: startDate,
-      tenant: contract ? contract.tenant : '',
-      phone: contract ? contract.phone : '',
+      tenant: getContractTenantName(contract),
+      phone: getContractTenantPhone(contract),
       people_count: contract ? Number(contract.people_count) || 1 : 1,
       ...applyFields(exp, isDepositOnly),
     };

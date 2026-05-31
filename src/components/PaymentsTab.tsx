@@ -59,6 +59,17 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
   const rawPayments = data.payments;
   const receivers = getReceivers(data.settings);
 
+  const getContractTenantName = (contract: any) => {
+    if (!contract) return '';
+    const t = data.tenants.find((t: any) => t.id === contract.tenant_id);
+    return t ? t.name : '';
+  };
+  const getContractTenantPhone = (contract: any) => {
+    if (!contract) return '';
+    const t = data.tenants.find((t: any) => t.id === contract.tenant_id);
+    return t ? t.phone : '';
+  };
+
   const getRoomName = (contractId: string) => {
     const c = data.contracts_all.find((c: any) => c.id === contractId);
     if (!c) return contractId;
@@ -254,13 +265,13 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
     const contract = data.contracts_all.find((c: any) => c.id === p.contract_id);
     setEditItem(p);
     // Map sheet headers (Vietnamese) to form fields
-    const baseRent = Number(p.base_rent) || Number(p['tiền phòng']) || 0;
-    const extraFee = Number(p.extra_fee_total) || Number(p['phụ thu quá người']) || 0;
-    const livingFee = Number(p.surcharge_total) || Number(p['phí dịch vụ']) || 0;
-    const waterFee = Number(p.water_total) || Number(p['nước sinh hoạt']) || 0;
-    const electricFee = Number(p.electric_total) || Number(p['điện sinh hoạt']) || 0;
-    const depositFee = Number(p.deposit_fee) || Number(p['tiền cọc']) || 0;
-    const discount = Number(p.discount_applied) || Number(p['chiết khấu']) || Number(p['giảm giá']) || Number(p['chiết khấu/tháng']) || Number(p['discount']) || 0;
+    const baseRent = Number(p.base_rent) || 0;
+    const extraFee = Number(p.extra_fee_total) || 0;
+    const livingFee = Number(p.surcharge_total) || 0;
+    const waterFee = Number(p.water_total) || 0;
+    const electricFee = Number(p.electric_total) || 0;
+    const depositFee = Number(p.deposit_fee) || 0;
+    const discount = Number(p.discount_applied) || Number(p.discount) || 0;
 
     const pType = String(p.payment_type || '').toLowerCase();
     const included = [];
@@ -279,14 +290,14 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
       room_id: contract ? contract.room_id : '',
       contract_id: p.contract_id,
       amount: p.amount,
-      received_date: p.received_date || p.date,
+      received_date: p.received_date,
       receiver: p.receiver || 'Chưa nhận',
       method: p.method || 'Tiền mặt',
       status: p.status || 'Chưa tới chủ nhà',
       is_partial: String(p.is_partial).toUpperCase() === 'TRUE',
       note: p.note || '',
-      tenant: contract ? contract.tenant : '',
-      phone: contract ? contract.phone : '',
+      tenant: getContractTenantName(contract),
+      phone: getContractTenantPhone(contract),
       cccd: '',
       issue_date: '',
       issue_place: '',
@@ -308,9 +319,9 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
       old_electric: Number(p.old_electric) || (contract ? Number(contract.start_electric) || 0 : 0),
       new_electric: Number(p.new_electric) || 0,
       electric_usage: Number(p.electric_usage) || (Math.max(0, (Number(p.new_electric) || 0) - (Number(p.old_electric) || 0))),
-      previous_debt: Number(p.previous_debt) || Number(p['nợ kỳ trước']) || 0,
+      previous_debt: Number(p.previous_debt) || 0,
       deposit_paid: Number(p.deposit_paid) || 0,
-      payment_period: p.payment_period || (p.received_date ? p.received_date.split('/').slice(1).join('/') : (p.date ? p.date.split('/').slice(1).join('/') : '')),
+      payment_period: p.payment_period || (p.received_date ? p.received_date.split('/').slice(1).join('/') : ''),
     });
     setModalOpen(true);
   };

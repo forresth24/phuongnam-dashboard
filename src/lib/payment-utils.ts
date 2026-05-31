@@ -270,23 +270,7 @@ export function calculateExpectedAmount(
     stayed_days,
     period_days,
     oldElectric,
-    discount: contract ? (() => {
-      const parseVal = (v: any) => {
-        if (typeof v === 'number') return v;
-        if (typeof v === 'string') return Number(v.replace(/[^0-9.-]+/g, '')) || 0;
-        return 0;
-      };
-      return (
-        parseVal(contract.discount_applied) || 
-        parseVal(contract['chiết khấu']) || 
-        parseVal(contract['giảm giá']) || 
-        parseVal(contract['chiết khấu/tháng']) || 
-        parseVal(contract['giảm giá/tháng']) || 
-        parseVal(contract['giam gia']) || 
-        parseVal(contract['chiet khau']) || 
-        parseVal(contract.discount) || 0
-      );
-    })() : 0,
+	discount: contract ? (Number(contract.discount) || 0) : 0,
   };
 
   // Recommended total: only include deposit if it's a new contract (Thu cọc)

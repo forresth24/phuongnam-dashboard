@@ -94,6 +94,17 @@ export function PaymentFormModal({
   const getActiveContract = (roomId: string) =>
     data.contracts.find((c: any) => String(c.room_id).trim() === String(roomId).trim());
 
+  const getContractTenantName = (contract: any) => {
+    if (!contract) return '';
+    const t = data.tenants.find((t: any) => t.id === contract.tenant_id);
+    return t ? t.name : '';
+  };
+  const getContractTenantPhone = (contract: any) => {
+    if (!contract) return '';
+    const t = data.tenants.find((t: any) => t.id === contract.tenant_id);
+    return t ? t.phone : '';
+  };
+
   const needsNewContract = !!(form.room_id && !getActiveContract(form.room_id));
 
   const calcExpected = (roomId?: string, startDate?: string, peopleCount?: number) => {
@@ -202,7 +213,7 @@ export function PaymentFormModal({
     setForm(prev => ({
       ...prev,
       room_id: roomId, contract_id: contract ? contract.id : '',
-      tenant: contract ? contract.tenant : '', phone: contract ? contract.phone : '',
+      tenant: getContractTenantName(contract), phone: getContractTenantPhone(contract),
       cccd: '', issue_date: '', issue_place: 'Cục Cảnh Sát', address: '', dob: '',
       start_date: startDate,
       people_count: contract ? Number(contract.people_count) || 1 : 1,
@@ -457,8 +468,8 @@ export function PaymentFormModal({
           ...form,
           room_id: rid,
           contract_id: contract.id,
-          tenant: contract.tenant,
-          phone: contract.phone,
+          tenant: getContractTenantName(contract),
+          phone: getContractTenantPhone(contract),
           people_count: Number(contract.people_count) || 1,
           base_rent: Math.max(0, exp.basePrice - rentPaid),
           extra_person_fee: exp.extraPersonFee,

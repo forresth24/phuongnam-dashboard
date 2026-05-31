@@ -30,7 +30,7 @@ interface ContractForm {
   phone: string;
   cccd: string;
   people_count: number | string;
-  children_count: number | string;
+  tenants_details: string;
   move_in_date: string;
   start_date: string;
   start_date_mode: string;
@@ -45,7 +45,7 @@ interface ContractForm {
   tenant_id: string;
 }
 const makeEmptyForm = (): ContractForm => ({
-  room_id: '', tenant: '', phone: '', cccd: '', people_count: 1, children_count: 0,
+  room_id: '', tenant: '', phone: '', cccd: '', people_count: 1, tenants_details: '',
   move_in_date: todayStr(), start_date: '', start_date_mode: 'first_of_month', duration: 3, rent: 0, deposit_paid: 0,
   start_electric: 0, discount: 0, extra_person_fee: 0, note: '', end_date: '', tenant_id: '',
 });
@@ -90,6 +90,23 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
   if (!data) return null;
 
   const isAdmin = role === 'admin';
+
+  // Lookup helpers for tenant data via tenant_id
+  const findTenant = (c: any) => {
+    if (c.tenant_id) return data.tenants.find((t: any) => t.id === c.tenant_id) || null;
+    // Fallback: old contracts without tenant_id — find first tenant in this room
+    const roomTenants = data.tenants.filter((t: any) => String(t.room_id).trim() === String(c.room_id).trim());
+    return roomTenants.length > 0 ? roomTenants[0] : null;
+  };
+  const getTenantName = (c: any) => {
+    const t = findTenant(c);
+    return t ? t.name : (c.tenant || '—');
+  };
+  const getTenantPhone = (c: any) => {
+    const t = findTenant(c);
+    return t ? t.phone : (c.phone || '');
+  };
+
   const rawContracts = filter === 'active' ? data.contracts : (filter === 'ended' ? data.contracts_all.filter((c: any) => c.status !== 'active') : data.contracts_all);
   const { min: minMonths, max: maxMonths } = getContractMonthRange(data.settings);
 
@@ -150,17 +167,16 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
   const openEdit = (c: any) => {
     let durationMonths = Number(c.duration) || 12;
 
-    // Find cccd from tenants sheet
-    const t = data.tenants.find((tenant: any) => 
-      String(tenant.room_id).trim() === String(c.room_id).trim() && 
-      String(tenant.name).trim() === String(c.tenant).trim()
-    );
+    // Find tenant from tenant_id
+    const t = c.tenant_id ? data.tenants.find((t: any) => t.id === c.tenant_id) : null;
+    const tenantName = t ? t.name : (c.tenant || '');
+    const tenantPhone = t ? t.phone : (c.phone || '');
     const tenantCccd = t ? t.cccd : '';
 
     setEditItem(c);
     setForm({
-      room_id: String(c.room_id || ''), tenant: String(c.tenant || ''), phone: String(c.phone || ''), cccd: tenantCccd,
-      people_count: c.people_count || 1, children_count: c.children_count || 0,
+      room_id: String(c.room_id || ''), tenant: tenantName, phone: tenantPhone, cccd: tenantCccd,
+      people_count: c.people_count || 1, tenants_details: c.tenants_details || '',
       move_in_date: String(c.move_in_date || c.start_date || ''), start_date: String(c.start_date || ''), start_date_mode: 'first_of_month', duration: durationMonths,
       rent: c.rent || 0, deposit_paid: c.deposit_paid || 0, start_electric: c.start_electric || 0,
       discount: c.discount || 0, extra_person_fee: c.extra_person_fee || 0, note: String(c.note || ''), end_date: c.end_date || '',
@@ -244,7 +260,7 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
         if (contract) {
           const depositAmount = Number(contract.deposit_paid) || 0;
           let refundAmount = depositAmount;
-          let note = `Trả cọc - Phòng ${contract.room_id} - ${contract.tenant}`;
+          let note = `Trả cọc - Phòng ${contract.room_id} - ${getTenantName(contract)}`;
 
           if (finalElectricReading) {
             const startElectric = Number(contract.start_electric) || 0;
@@ -266,7 +282,7 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
             await API.createPayable(config, {
               contract_id: contract.id,
               room_id: contract.room_id,
-              tenant: contract.tenant,
+              tenant: getTenantName(contract),
               amount: refundAmount,
               status: 'pending',
               payable_type: 'Trả cọc',
@@ -440,8 +456,8 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
                 <motion.tr key={c.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="hover:bg-slate-50/50 transition-colors">
                   <td className="px-4 py-3 font-mono text-xs text-slate-700">{c.id}</td>
                   <td className="px-4 py-3 font-medium">{c.room_id}</td>
-                  <td className="px-4 py-3">{c.tenant}</td>
-                  <td className="px-4 py-3 text-slate-500">{c.phone}</td>
+                  <td className="px-4 py-3">{getTenantName(c)}</td>
+                  <td className="px-4 py-3 text-slate-500">{getTenantPhone(c)}</td>
                   <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{displayRange(c.start_date, c.end_date, c.duration)}</td>
                   <td className="px-4 py-3 font-medium text-indigo-600">{formatVND(c.rent)}</td>
                   <td className="px-4 py-3">{formatVND(c.deposit_paid || 0)}</td>
@@ -566,10 +582,10 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
             <input id="input-contract-people" type="number" value={form.people_count} onChange={e => F('people_count', e.target.value)} min={1} inputMode="numeric"
               className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
           </div>
-          {/* Children count */}
-          <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Trẻ em dưới 8 tuổi</label>
-            <input id="input-contract-children" type="number" value={form.children_count} onChange={e => F('children_count', e.target.value)} min={0} inputMode="numeric"
+          {/* Tenants details - optional */}
+          <div className="col-span-2">
+            <label className="block text-xs font-medium text-slate-500 mb-1">Thông tin khách (tên, CCCD, ...)</label>
+            <textarea id="input-contract-tenants-details" value={form.tenants_details || ''} onChange={e => F('tenants_details', e.target.value)} rows={2} placeholder="Ví dụ: Nguyễn Văn A (CCCD: 079...), Trần Thị B (CCCD: 079...)"
               className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
           </div>
           {/* Move-in date */}

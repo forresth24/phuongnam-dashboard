@@ -48,9 +48,9 @@ export function ReportsTab({ data, loading }: Props) {
     if (!data) return [];
     const periods = new Set<string>();
     data.payments.forEach(p => {
-      let period = p.payment_period || p['kỳ thanh toán'];
-      if (!period && (p.received_date || p.date)) {
-        period = p.received_date || p.date;
+      let period = p.payment_period;
+      if (!period && p.received_date) {
+        period = p.received_date;
       }
       if (period) {
         periods.add(normalizePeriod(period));
@@ -73,7 +73,7 @@ export function ReportsTab({ data, loading }: Props) {
     for (const p of data.payments) {
       const cId = p.contract_id || '';
       if (cId) {
-        const deposit = safeParseNumber(p.deposit_amount || p.deposit_fee || p['tiền cọc']);
+        const deposit = safeParseNumber(p.deposit_fee);
         if (deposit > 0) {
           map[cId] = (map[cId] || 0) + deposit;
         }
@@ -86,9 +86,9 @@ export function ReportsTab({ data, loading }: Props) {
     if (!data || !selectedPeriod) return [];
 
     const targetPayments = data.payments.filter(p => {
-      let period = p.payment_period || p['kỳ thanh toán'];
-      if (!period && (p.received_date || p.date)) {
-        period = p.received_date || p.date;
+      let period = p.payment_period;
+      if (!period && p.received_date) {
+        period = p.received_date;
       }
       return normalizePeriod(period) === normalizePeriod(selectedPeriod);
     });
@@ -159,7 +159,7 @@ export function ReportsTab({ data, loading }: Props) {
           electric_total: 0,
           deposit_collected: 0,
           total_revenue: 0,
-          electric_old: p.electric_old || p.old_electric || p['chỉ số điện cũ'] || (contract ? contract.start_electric : 0) || 0,
+          electric_old: p.old_electric || (contract ? contract.start_electric : 0) || 0,
           electric_new: 0,
           electric_usage: 0,
           stayed_days: 0,
@@ -170,21 +170,21 @@ export function ReportsTab({ data, loading }: Props) {
       const group = grouped.get(contractId);
       group.payments.push(p);
       
-      const receiver = p.receiver || p['người nhận'] || '';
+      const receiver = p.receiver || '';
       
       if (receiver !== 'Chưa nhận') {
-        let baseRent = safeParseNumber(p.base_rent || p['tiền phòng']);
-        const water = safeParseNumber(p.water_total || p['nước sinh hoạt']);
-        const surcharge = safeParseNumber(p.surcharge_total || p['phí dịch vụ']);
-        const electric = safeParseNumber(p.electric_total || p['điện sinh hoạt']);
-        let deposit = safeParseNumber(p.deposit_amount || p.deposit_fee || p['tiền cọc']);
-        const actualAmount = safeParseNumber(p.amount || p.total_amount || p['số tiền']);
+        let baseRent = safeParseNumber(p.base_rent);
+        const water = safeParseNumber(p.water_total);
+        const surcharge = safeParseNumber(p.surcharge_total);
+        const electric = safeParseNumber(p.electric_total);
+        let deposit = safeParseNumber(p.deposit_fee);
+        const actualAmount = safeParseNumber(p.amount);
 
         if (baseRent === 0 && actualAmount > 0) {
           baseRent = Math.max(0, actualAmount - water - surcharge - electric);
         }
         
-        const typeStr = String(p.payment_type || p.type || p['loại khoản thu'] || '').toLowerCase();
+        const typeStr = String(p.payment_type || '').toLowerCase();
         if (deposit === 0 && typeStr.includes('cọc')) {
             deposit = actualAmount;
         }
@@ -197,17 +197,17 @@ export function ReportsTab({ data, loading }: Props) {
         group.total_revenue += actualAmount;
       }
       
-      if (p.electric_new || p.new_electric || p['chỉ số điện mới']) {
-        group.electric_old = p.electric_old || p.old_electric || p['chỉ số điện cũ'] || group.electric_old;
-        group.electric_new = p.electric_new || p.new_electric || p['chỉ số điện mới'] || group.electric_new;
-        group.electric_usage = p.electric_usage || p['số điện tiêu thụ'] || group.electric_usage;
+      if (p.new_electric) {
+        group.electric_old = p.old_electric || group.electric_old;
+        group.electric_new = p.new_electric || group.electric_new;
+        group.electric_usage = p.electric_usage || group.electric_usage;
       }
 
-      if (p.stayed_days !== undefined || p.days_stayed !== undefined || p['số ngày ở'] !== undefined) {
-          group.stayed_days = Number(p.stayed_days || p.days_stayed || p['số ngày ở']) || 0;
+      if (p.stayed_days !== undefined) {
+          group.stayed_days = Number(p.stayed_days) || 0;
       }
 
-      const typeStr = String(p.payment_type || p.type || p['loại khoản thu'] || '').toLowerCase();
+      const typeStr = String(p.payment_type || '').toLowerCase();
       if (typeStr.includes('cọc')) {
         if (!group.notes.includes('Tiền cọc')) {
           group.notes.push('Tiền cọc');
