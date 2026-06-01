@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Trash2, CheckCircle2, Loader2, FileText, Pencil, ArrowUpDown, ChevronUp, ChevronDown, Search, Filter, ArrowRightCircle } from 'lucide-react';
+import { Plus, Trash2, CheckCircle2, Loader2, FileText, Pencil, ArrowUpDown, ChevronUp, ChevronDown, Search, Filter, ArrowRightCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { AppConfig, DashboardData, UserRole } from '../lib/api';
 import { API, downloadBase64Pdf } from '../lib/api';
 import { Badge } from './ui/Badge';
@@ -46,7 +46,13 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
   const [filterType, setFilterType] = useState('');
   const [filterReceiver, setFilterReceiver] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
-  const [filterPeriod, setFilterPeriod] = useState('');
+  const now = new Date();
+  const currentPeriod = `${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
+  const [filterPeriod, setFilterPeriod] = useState(currentPeriod);
+
+  // Pagination
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
 
   // Bulk Selection
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -139,6 +145,11 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
     if (filterPeriod && !((p.payment_period || '').includes(filterPeriod))) return false;
     return true;
   });
+
+  const totalFiltered = filteredPayments.length;
+  const totalPages = Math.max(1, Math.ceil(totalFiltered / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const pagedPayments = filteredPayments.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   const allFilteredIds = filteredPayments.map(p => p.id);
   const isAllSelected = allFilteredIds.length > 0 && allFilteredIds.every(id => selectedIds.includes(id));
@@ -360,13 +371,13 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
       <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 grid grid-cols-1 md:grid-cols-5 gap-4">
         <div className="relative">
           <Search className="absolute left-3 top-2.5 text-slate-400" size={16} />
-          <input type="text" placeholder="Tìm phòng, HĐ..." value={filterRoom} onChange={e => setFilterRoom(e.target.value)}
+          <input type="text" placeholder="Tìm phòng, HĐ..." value={filterRoom} onChange={e => { setFilterRoom(e.target.value); setPage(1); }}
             className="w-full pl-10 pr-4 py-2 bg-slate-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
         </div>
-        
+
         <div className="relative">
           <Filter className="absolute left-3 top-2.5 text-slate-400" size={16} />
-          <select value={filterType} onChange={e => setFilterType(e.target.value)}
+          <select value={filterType} onChange={e => { setFilterType(e.target.value); setPage(1); }}
             className="w-full pl-10 pr-4 py-2 bg-slate-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none appearance-none">
             <option value="">Tất cả loại GD</option>
             {Array.from(new Set(rawPayments.map(p => p.payment_type))).filter(Boolean).map(t => (
@@ -376,7 +387,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
         </div>
 
         <div className="relative">
-          <select value={filterReceiver} onChange={e => setFilterReceiver(e.target.value)}
+          <select value={filterReceiver} onChange={e => { setFilterReceiver(e.target.value); setPage(1); }}
             className="w-full px-4 py-2 bg-slate-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none appearance-none">
             <option value="">Tất cả người nhận</option>
             {receivers.map(r => <option key={r} value={r}>{r}</option>)}
@@ -385,7 +396,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
         </div>
 
         <div className="relative">
-          <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
+          <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1); }}
             className="w-full px-4 py-2 bg-slate-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none appearance-none">
             <option value="">Tất cả trạng thái</option>
             <option value="Chưa tới chủ nhà">Chưa tới chủ nhà</option>
@@ -394,7 +405,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
         </div>
 
         <div className="relative">
-          <input type="text" placeholder="Kỳ (MM/YYYY)..." value={filterPeriod} onChange={e => setFilterPeriod(e.target.value)}
+          <input type="text" placeholder="Kỳ (MM/YYYY)..." value={filterPeriod} onChange={e => { setFilterPeriod(e.target.value); setPage(1); }}
             className="w-full px-4 py-2 bg-slate-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
         </div>
       </div>
@@ -427,7 +438,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredPayments.map((p: any) => (
+              {pagedPayments.map((p: any) => (
                 <motion.tr key={p.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className={`hover:bg-slate-50/50 transition-colors ${selectedIds.includes(p.id) ? 'bg-indigo-50/30' : ''}`}>
                   {isAdmin && (
                     <td className="w-12 px-4 py-3 sticky left-0 z-10 bg-white shadow-[1px_0_0_0_rgba(0,0,0,0.05)]">
@@ -463,7 +474,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
                   </td>
                   <td className="px-4 py-3 text-slate-500 text-xs whitespace-nowrap">{p.received_date || p.date}</td>
                   <td className="px-4 py-3 text-slate-400 text-[10px] whitespace-nowrap">
-                    {p.updated_at ? (p.updated_at.includes('T') ? new Date(p.updated_at).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' }) : p.updated_at) : '—'}
+                    {p.updated_at ? (p.updated_at.includes('T') ? new Date(p.updated_at).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit', day: '2-digit', month: '2-digit' }) : p.updated_at) : '—'}
                   </td>
                   <td className="px-4 py-3 text-slate-600 text-xs">{p.receiver || '—'}</td>
                   <td className="px-4 py-3 text-xs">
@@ -498,13 +509,59 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
                   )}
                 </motion.tr>
               ))}
-              {filteredPayments.length === 0 && <tr><td colSpan={13} className="px-4 py-8 text-center text-slate-400">Chưa có giao dịch nào phù hợp bộ lọc</td></tr>}
+              {pagedPayments.length === 0 && <tr><td colSpan={13} className="px-4 py-8 text-center text-slate-400">Chưa có giao dịch nào phù hợp bộ lọc</td></tr>}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Payment Form Modal — uses shared PaymentFormModal */}
+      {/* Pagination */}
+      <div className="flex items-center justify-between bg-white px-4 py-3 rounded-2xl shadow-sm border border-slate-100">
+        <div className="flex items-center gap-3 text-sm text-slate-500">
+          <span>{totalFiltered} khoản thu</span>
+          <select value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }}
+            className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs focus:ring-2 focus:ring-indigo-400 focus:outline-none">
+            <option value={20}>20 / trang</option>
+            <option value={50}>50 / trang</option>
+            <option value={100}>100 / trang</option>
+          </select>
+          {totalPages > 1 && (
+            <span className="text-xs text-slate-400">
+              {(safePage - 1) * pageSize + 1}&ndash;{Math.min(safePage * pageSize, totalFiltered)} / {totalFiltered}
+            </span>
+          )}
+        </div>
+        {totalPages > 1 && (
+          <div className="flex items-center gap-1">
+            <button onClick={() => setPage(safePage - 1)} disabled={safePage <= 1}
+              className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-indigo-600 disabled:opacity-30 disabled:cursor-not-allowed">
+              <ChevronLeft size={16} />
+            </button>
+            {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
+              let pageNum: number;
+              if (totalPages <= 7) {
+                pageNum = i + 1;
+              } else if (safePage <= 4) {
+                pageNum = i + 1;
+              } else if (safePage >= totalPages - 3) {
+                pageNum = totalPages - 6 + i;
+              } else {
+                pageNum = safePage - 3 + i;
+              }
+              return (
+                <button key={pageNum} onClick={() => setPage(pageNum)}
+                  className={`min-w-[32px] h-8 rounded-lg text-xs font-medium transition-colors ${safePage === pageNum ? 'bg-indigo-600 text-white shadow-sm' : 'hover:bg-slate-100 text-slate-600'}`}>
+                  {pageNum}
+                </button>
+              );
+            })}
+            <button onClick={() => setPage(safePage + 1)} disabled={safePage >= totalPages}
+              className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-indigo-600 disabled:opacity-30 disabled:cursor-not-allowed">
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        )}
+      </div>
       <PaymentFormModal
         config={config}
         data={data}
