@@ -371,13 +371,13 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
       <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 grid grid-cols-1 md:grid-cols-5 gap-4">
         <div className="relative">
           <Search className="absolute left-3 top-2.5 text-slate-400" size={16} />
-          <input type="text" placeholder="Tìm phòng, HĐ..." value={filterRoom} onChange={e => { setFilterRoom(e.target.value); setPage(1); }}
+          <input id="input-payment-filter-room" name="filter_room" type="text" placeholder="Tìm phòng, HĐ..." value={filterRoom} onChange={e => { setFilterRoom(e.target.value); setPage(1); }}
             className="w-full pl-10 pr-4 py-2 bg-slate-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
         </div>
 
         <div className="relative">
           <Filter className="absolute left-3 top-2.5 text-slate-400" size={16} />
-          <select value={filterType} onChange={e => { setFilterType(e.target.value); setPage(1); }}
+          <select id="select-payment-filter-type" name="filter_type" value={filterType} onChange={e => { setFilterType(e.target.value); setPage(1); }}
             className="w-full pl-10 pr-4 py-2 bg-slate-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none appearance-none">
             <option value="">Tất cả loại GD</option>
             {Array.from(new Set(rawPayments.map(p => p.payment_type))).filter(Boolean).map(t => (
@@ -387,7 +387,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
         </div>
 
         <div className="relative">
-          <select value={filterReceiver} onChange={e => { setFilterReceiver(e.target.value); setPage(1); }}
+          <select id="select-payment-filter-receiver" name="filter_receiver" value={filterReceiver} onChange={e => { setFilterReceiver(e.target.value); setPage(1); }}
             className="w-full px-4 py-2 bg-slate-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none appearance-none">
             <option value="">Tất cả người nhận</option>
             {receivers.map(r => <option key={r} value={r}>{r}</option>)}
@@ -396,7 +396,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
         </div>
 
         <div className="relative">
-          <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1); }}
+          <select id="select-payment-filter-status" name="filter_status" value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1); }}
             className="w-full px-4 py-2 bg-slate-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none appearance-none">
             <option value="">Tất cả trạng thái</option>
             <option value="Chưa tới chủ nhà">Chưa tới chủ nhà</option>
@@ -405,7 +405,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
         </div>
 
         <div className="relative">
-          <input type="text" placeholder="Kỳ (MM/YYYY)..." value={filterPeriod} onChange={e => { setFilterPeriod(e.target.value); setPage(1); }}
+          <input id="input-payment-filter-period" name="filter_period" type="text" placeholder="Kỳ (MM/YYYY)..." value={filterPeriod} onChange={e => { setFilterPeriod(e.target.value); setPage(1); }}
             className="w-full px-4 py-2 bg-slate-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
         </div>
       </div>
@@ -585,7 +585,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Số tiền thực nhận<RequiredStar /></label>
             <div className="relative">
-              <input type="number" value={completeAmount} onChange={e => setCompleteAmount(Number(e.target.value) || 0)}
+              <input id="input-complete-amount" name="complete_amount" type="number" value={completeAmount} onChange={e => setCompleteAmount(Number(e.target.value) || 0)}
                 className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-indigo-600 focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
               <div className="absolute right-3 top-2 text-[10px] text-slate-400 uppercase font-bold pointer-events-none">VND</div>
             </div>
@@ -594,7 +594,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
 
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Người nhận<RequiredStar /></label>
-            <select value={completeReceiver} onChange={e => setCompleteReceiver(e.target.value)}
+            <select id="select-complete-receiver" name="complete_receiver" value={completeReceiver} onChange={e => setCompleteReceiver(e.target.value)}
               className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none">
               {receivers.map(r => <option key={r} value={r}>{r}</option>)}
             </select>
@@ -619,7 +619,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
 
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Phương thức<RequiredStar /></label>
-            <select value={completeMethod} onChange={e => setCompleteMethod(e.target.value)}
+            <select id="select-complete-method" name="complete_method" value={completeMethod} onChange={e => setCompleteMethod(e.target.value)}
               className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none">
               <option value="Tiền mặt">Tiền mặt</option>
               <option value="Chuyển khoản">Chuyển khoản</option>
@@ -651,6 +651,8 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
             <div className="border-t border-amber-100 pt-3">
               <label className="block text-sm font-bold text-amber-700 mb-1">Nợ kỳ trước (ghi đè)</label>
               <input
+                id="input-pdf-debt-override"
+                name="pdf_debt_override"
                 type="number"
                 value={pdfDebtOverride}
                 onChange={e => setPdfDebtOverride(Number(e.target.value) || 0)}

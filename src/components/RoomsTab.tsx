@@ -350,17 +350,17 @@ export function RoomsTab({ config, data, loading, role, onRefresh, onNavigate }:
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Mã phòng (ID)<span className="text-rose-500 ml-0.5">*</span></label>
-            <input value={form.id} onChange={e => setForm({ ...form, id: e.target.value })} disabled={!!editRoom} placeholder="101"
+            <input id="input-room-id" name="room_id" value={form.id} onChange={e => setForm({ ...form, id: e.target.value })} disabled={!!editRoom} placeholder="101"
               className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:bg-slate-50 disabled:text-slate-400" />
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Tên phòng<span className="text-rose-500 ml-0.5">*</span></label>
-            <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Phòng 101"
+            <input id="input-room-name" name="name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Phòng 101"
               className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Loại phòng</label>
-            <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}
+            <select id="select-room-type" name="type" value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}
               className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
               <option value="Phòng đơn">Phòng đơn</option><option value="Phòng đôi">Phòng đôi</option>
             </select>
@@ -368,20 +368,20 @@ export function RoomsTab({ config, data, loading, role, onRefresh, onNavigate }:
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Giá thuê/tháng (VNĐ)</label>
-              <input type="number" value={form.price} onChange={e => setForm({ ...form, price: Number(e.target.value) })}
+              <input id="input-room-price" name="price" type="number" value={form.price} onChange={e => setForm({ ...form, price: Number(e.target.value) })}
                 className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
               {form.price > 0 && <p className="text-[11px] text-slate-400 mt-0.5">{formatVND(form.price)}</p>}
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Giá niêm yết (Gạch ngang)</label>
-              <input type="number" value={form.original_price} onChange={e => setForm({ ...form, original_price: Number(e.target.value) })}
+              <input id="input-room-original-price" name="original_price" type="number" value={form.original_price} onChange={e => setForm({ ...form, original_price: Number(e.target.value) })}
                 className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
               {form.original_price > 0 && <p className="text-[11px] text-slate-400 mt-0.5">{formatVND(form.original_price)}</p>}
             </div>
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Ghi chú</label>
-            <textarea value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} rows={2}
+            <textarea id="textarea-room-note" name="note" value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} rows={2}
               className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
           </div>
           <button onClick={handleSave} disabled={saving || !form.name}

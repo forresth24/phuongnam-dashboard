@@ -108,6 +108,8 @@ export function SettingsTab({ config, data, loading, role, onRefresh }: Props) {
                   <td className="px-6 py-4">
                     {isAdmin ? (
                       <input
+                        id={`input-setting-${key.toLowerCase()}`}
+                        name={key}
                         value={currentValue}
                         onChange={e => handleChange(key, e.target.value)}
                         className={`border rounded-lg px-3 py-1.5 text-sm w-48 focus:outline-none focus:ring-2 focus:ring-indigo-400 ${isModified ? 'border-indigo-400 bg-white' : 'border-slate-200'}`}

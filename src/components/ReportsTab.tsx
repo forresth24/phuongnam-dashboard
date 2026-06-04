@@ -436,8 +436,8 @@ export function ReportsTab({ data, loading }: Props) {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 print:hidden">
         <h2 className="text-xl font-bold text-slate-800">Báo cáo kinh doanh</h2>
         <div className="flex flex-wrap items-center gap-3">
-          <select 
-            value={selectedPeriod} 
+          <select id="select-report-period" name="period"
+            value={selectedPeriod}
             onChange={e => setSelectedPeriod(e.target.value)}
             className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-700 focus:ring-2 focus:ring-indigo-400 focus:outline-none appearance-none cursor-pointer"
           >
@@ -448,10 +448,10 @@ export function ReportsTab({ data, loading }: Props) {
           </select>
           <div className="relative">
             <Search className="absolute left-3 top-2.5 text-slate-400" size={16} />
-            <input 
-              type="text" 
-              placeholder="Tìm phòng..." 
-              value={searchTerm} 
+            <input id="input-report-search" name="search"
+              type="text"
+              placeholder="Tìm phòng..."
+              value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               className="w-48 pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" 
             />

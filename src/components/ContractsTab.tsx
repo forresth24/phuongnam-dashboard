@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Pencil, Trash2, Archive, Loader2, FileDown, FileText, ArrowUpDown, ChevronUp, ChevronDown, RefreshCw } from 'lucide-react';
+import { Plus, Pencil, Trash2, Archive, Loader2, FileDown, FileText, ArrowUpDown, ChevronUp, ChevronDown, RefreshCw, ScrollText } from 'lucide-react';
 import { API, downloadBase64Pdf } from '../lib/api';
 import type { AppConfig, DashboardData, UserRole } from '../lib/api';
 import { Badge } from './ui/Badge';
@@ -77,6 +77,7 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
   const [calculatedElectricCost, setCalculatedElectricCost] = useState(0);
   const [calculatedRefund, setCalculatedRefund] = useState(0);
   const [pdfLoading, setPdfLoading] = useState<string | null>(null);
+  const [terminationPdfTarget, setTerminationPdfTarget] = useState<any>(null);
   const [restoringId, setRestoringId] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<string>('room_id');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
@@ -486,6 +487,25 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
                         </button>
                         {isAdmin && c.status !== 'active' && <button onClick={() => handleTerminationPdf(c)} disabled={pdfLoading === `termination_${c.id}`} title="Biên bản thanh lý HĐ" className="p-1.5 rounded-lg hover:bg-violet-50 text-slate-400 hover:text-violet-600 disabled:opacity-50">{pdfLoading === `termination_${c.id}` ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}</button>}
                         {isAdmin && <button onClick={() => openEdit(c)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-indigo-600"><Pencil size={14} /></button>}
+                        {isAdmin && c.status === 'active' && <button onClick={() => {
+                          const contractPayments = (data.payments || []).filter(
+                            (p: any) => String(p.contract_id).trim() === String(c.id).trim()
+                          );
+                          const unpaidPayments = contractPayments.filter(
+                            (p: any) => !p.status || p.status === 'Chưa tới chủ nhà'
+                          );
+                          let defaultReading = '';
+                          if (unpaidPayments.length > 0) {
+                            const sorted = [...unpaidPayments].sort((a, b) =>
+                              (b.updated_at || b.received_date || '').localeCompare(a.updated_at || a.received_date || '')
+                            );
+                            defaultReading = String(sorted[0].new_electric || sorted[0].old_electric || '');
+                          }
+                          setTerminationPdfTarget(c);
+                          setFinalElectricReading(defaultReading);
+                          setDebtTotal('');
+                          setCleaningFee('');
+                        }} title="Xuất Biên bản thanh lý (PDF)" className="p-1.5 rounded-lg hover:bg-violet-50 text-slate-400 hover:text-violet-600"><ScrollText size={14} /></button>}
                         {isAdmin && c.status === 'active' && <button onClick={() => { setArchiveId(c.id); setForfeitDeposit(false); setFinalElectricReading(''); setDebtTotal(''); setCleaningFee(''); setShowCalcBreakdown(false); }} title="Kết thúc & Archive" className="p-1.5 rounded-lg hover:bg-amber-50 text-slate-400 hover:text-amber-600"><Archive size={14} /></button>}
                         {isAdmin && <button onClick={() => setDeleteId(c.id)} className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600"><Trash2 size={14} /></button>}
                         {isAdmin && c.status !== 'active' && (
@@ -511,7 +531,7 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
           {/* Room */}
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Mã phòng<RequiredStar /></label>
-            <select id="select-contract-room" value={form.room_id} onChange={e => onRoomChange(e.target.value)} disabled={!!editItem}
+            <select id="select-contract-room" name="room_id" value={form.room_id} onChange={e => onRoomChange(e.target.value)} disabled={!!editItem}
               className={`w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none disabled:bg-slate-50 ${errors.room_id ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`}>
               <option value="">-- Chọn phòng --</option>
               {data.rooms.map((r: any) => (
@@ -558,34 +578,34 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
           {/* Tenant */}
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Khách đại diện<RequiredStar /></label>
-            <input id="input-contract-tenant" value={form.tenant} onChange={e => F('tenant', e.target.value)}
+            <input id="input-contract-tenant" name="tenant" value={form.tenant} onChange={e => F('tenant', e.target.value)}
               className={`w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none ${errors.tenant ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`} />
             <FieldErr msg={errors.tenant} />
           </div>
           {/* Phone */}
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Số điện thoại</label>
-            <input id="input-contract-phone" value={form.phone} onChange={e => F('phone', e.target.value)} placeholder="0901234567" inputMode="tel"
+            <input id="input-contract-phone" name="phone" value={form.phone} onChange={e => F('phone', e.target.value)} placeholder="0901234567" inputMode="tel"
               className={`w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none ${errors.phone ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`} />
             <FieldErr msg={errors.phone} />
           </div>
           {/* CCCD */}
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Số CCCD</label>
-            <input id="input-contract-cccd" value={form.cccd} onChange={e => F('cccd', e.target.value)} placeholder="079123456789" inputMode="numeric"
+            <input id="input-contract-cccd" name="cccd" value={form.cccd} onChange={e => F('cccd', e.target.value)} placeholder="079123456789" inputMode="numeric"
               className={`w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none ${errors.cccd ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`} />
             <FieldErr msg={errors.cccd} />
           </div>
           {/* People count */}
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Số người ở</label>
-            <input id="input-contract-people" type="number" value={form.people_count} onChange={e => F('people_count', e.target.value)} min={1} inputMode="numeric"
+            <input id="input-contract-people" name="people_count" type="number" value={form.people_count} onChange={e => F('people_count', e.target.value)} min={1} inputMode="numeric"
               className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
           </div>
           {/* Tenants details - optional */}
           <div className="col-span-2">
             <label className="block text-xs font-medium text-slate-500 mb-1">Thông tin khách (tên, CCCD, ...)</label>
-            <textarea id="input-contract-tenants-details" value={form.tenants_details || ''} onChange={e => F('tenants_details', e.target.value)} rows={2} placeholder="Ví dụ: Nguyễn Văn A (CCCD: 079...), Trần Thị B (CCCD: 079...)"
+            <textarea id="input-contract-tenants-details" name="tenants_details" value={form.tenants_details || ''} onChange={e => F('tenants_details', e.target.value)} rows={2} placeholder="Ví dụ: Nguyễn Văn A (CCCD: 079...), Trần Thị B (CCCD: 079...)"
               className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
           </div>
           {/* Move-in date */}
@@ -619,7 +639,7 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
           {/* Duration */}
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Thời hạn HĐ (tháng)</label>
-            <input id="input-contract-duration"
+            <input id="input-contract-duration" name="duration"
               type="number"
               min={minMonths} max={maxMonths}
               value={form.duration}
@@ -632,7 +652,7 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
           {/* Rent */}
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Giá thuê/tháng</label>
-            <input id="input-contract-rent" type="number" value={form.rent} onChange={e => F('rent', Number(e.target.value))}
+            <input id="input-contract-rent" name="rent" type="number" value={form.rent} onChange={e => F('rent', Number(e.target.value))}
               inputMode="numeric" step="1000"
               className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
             {form.rent > 0 && <p className="text-[11px] text-slate-400 mt-0.5">{formatVND(form.rent)}</p>}
@@ -640,28 +660,28 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
           {/* Electric */}
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Số điện ban đầu</label>
-            <input id="input-contract-electric" type="number" value={form.start_electric} onChange={e => F('start_electric', Number(e.target.value))}
+            <input id="input-contract-electric" name="start_electric" type="number" value={form.start_electric} onChange={e => F('start_electric', Number(e.target.value))}
               inputMode="numeric"
               className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
           </div>
           {/* Extra Person Fee */}
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Phụ thu quá người/tháng</label>
-            <input id="input-contract-extra-fee" type="number" value={form.extra_person_fee} onChange={e => F('extra_person_fee', Number(e.target.value))}
+            <input id="input-contract-extra-fee" name="extra_person_fee" type="number" value={form.extra_person_fee} onChange={e => F('extra_person_fee', Number(e.target.value))}
               inputMode="numeric" step="1000"
               className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
           </div>
           {/* Discount */}
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Chiết khấu DV/tháng</label>
-            <input id="input-contract-discount" type="number" value={form.discount} onChange={e => F('discount', Number(e.target.value))}
+            <input id="input-contract-discount" name="discount" type="number" value={form.discount} onChange={e => F('discount', Number(e.target.value))}
               inputMode="numeric" step="1000"
               className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
           </div>
           {/* Note */}
           <div className="col-span-2">
             <label className="block text-xs font-medium text-slate-600 mb-1">Ghi chú</label>
-            <textarea id="textarea-contract-note" value={form.note} onChange={e => F('note', e.target.value)} rows={2}
+            <textarea id="textarea-contract-note" name="note" value={form.note} onChange={e => F('note', e.target.value)} rows={2}
               className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
           </div>
           {saveError && (
@@ -756,6 +776,50 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
           )}
         </div>
       </ConfirmDialog>
+
+      {/* Termination PDF Only — does NOT end the contract */}
+      <Modal open={!!terminationPdfTarget} onClose={() => { setTerminationPdfTarget(null); setFinalElectricReading(''); setDebtTotal(''); setCleaningFee(''); }} title="Xuất Biên bản thanh lý (Xem trước)" maxWidth="max-w-md">
+        <div className="space-y-4">
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm">
+            <p className="font-medium text-amber-800">⚠️ Hợp đồng chưa kết thúc</p>
+            <p className="text-xs text-amber-600 mt-1">Chỉ xuất PDF Biên bản thanh lý để xem trước. Hợp đồng vẫn còn hiệu lực.</p>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Chỉ số điện cuối (nếu có)</label>
+            <input name="termination-final-electric" id="input-termination-final-electric" type="number" value={finalElectricReading}
+              onChange={e => setFinalElectricReading(e.target.value)} placeholder="Nhập chỉ số điện mới"
+              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Nợ kỳ trước (nếu có)</label>
+              <input name="termination-debt" id="input-termination-debt" type="number" value={debtTotal}
+                onChange={e => setDebtTotal(e.target.value)} placeholder="0"
+                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Phí vệ sinh (nếu có)</label>
+              <input name="termination-cleaning" id="input-termination-cleaning" type="number" value={cleaningFee}
+                onChange={e => setCleaningFee(e.target.value)} placeholder="0"
+                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
+            </div>
+          </div>
+          <div className="flex gap-3 pt-2">
+            <button onClick={() => { setTerminationPdfTarget(null); setFinalElectricReading(''); setDebtTotal(''); setCleaningFee(''); }}
+              className="flex-1 border border-slate-200 hover:bg-slate-50 text-slate-700 py-2.5 rounded-xl font-medium transition-colors text-sm">Hủy</button>
+            <button onClick={async () => {
+              if (!terminationPdfTarget) return;
+              try { await handleTerminationPdf(terminationPdfTarget); setTerminationPdfTarget(null); }
+              catch (e: any) { alert('Lỗi tạo PDF: ' + e.message); }
+              setFinalElectricReading(''); setDebtTotal(''); setCleaningFee('');
+            }} disabled={pdfLoading === `termination_${terminationPdfTarget?.id}`}
+              className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-xl font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2 text-sm shadow-sm shadow-indigo-100">
+              {pdfLoading === `termination_${terminationPdfTarget?.id}` ? <Loader2 size={16} className="animate-spin" /> : <FileText size={16} />}
+              Xuất PDF
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Sub-Contract Member Selection Modal */}
       <Modal 

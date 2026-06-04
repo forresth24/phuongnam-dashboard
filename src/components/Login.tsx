@@ -48,8 +48,8 @@ export function Login({ onLogin }: LoginProps) {
             <label className="block text-sm font-medium text-indigo-100 mb-1 ml-1">API URL (Cloudflare Worker)</label>
             <div className="relative">
               <Globe className="absolute left-3 top-1/2 -translate-y-1/2 text-indigo-300" size={20} />
-              <input 
-                type="url" 
+              <input id="input-api-url" name="api_url"
+                type="url"
                 required
                 value={apiUrl}
                 onChange={(e) => setApiUrl(e.target.value)}
@@ -63,8 +63,8 @@ export function Login({ onLogin }: LoginProps) {
             <label className="block text-sm font-medium text-indigo-100 mb-1 ml-1">Access Token (API Key)</label>
             <div className="relative">
               <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 text-indigo-300" size={20} />
-              <input 
-                type="password" 
+              <input id="input-api-token" name="api_token"
+                type="password"
                 required
                 value={token}
                 onChange={(e) => setToken(e.target.value)}

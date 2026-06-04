@@ -571,7 +571,7 @@ export function PaymentFormModal({
           {showRoomSelector && !isNoticeMode && (
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Mã phòng<RequiredStar /></label>
-              <select value={form.room_id} onChange={e => onRoomChange(e.target.value)} disabled={!!editItem}
+              <select id="select-payment-room" name="room_id" value={form.room_id} onChange={e => onRoomChange(e.target.value)} disabled={!!editItem}
                 className={`w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none disabled:bg-slate-50 ${errors.room_id ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`}>
                 <option value="">Chọn phòng...</option>
                 {data.rooms.map((r: any) => {
@@ -620,19 +620,19 @@ export function PaymentFormModal({
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">Tên khách<RequiredStar /></label>
-                  <input id="input-tenant-name" value={form.tenant} onChange={e => F('tenant', e.target.value)}
+                  <input id="input-tenant-name" name="tenant" value={form.tenant} onChange={e => F('tenant', e.target.value)}
                     className={`w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none ${errors.tenant ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`} />
                   <FieldErr msg={errors.tenant} />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">Số điện thoại</label>
-                  <input id="input-tenant-phone" value={form.phone} onChange={e => F('phone', e.target.value)} placeholder="0901234567"
+                  <input id="input-tenant-phone" name="phone" value={form.phone} onChange={e => F('phone', e.target.value)} placeholder="0901234567"
                     className={`w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none ${errors.phone ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`} />
                   <FieldErr msg={errors.phone} />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">Số CCCD</label>
-                  <input id="input-tenant-cccd" value={form.cccd} onChange={e => F('cccd', e.target.value)} placeholder="079123456789"
+                  <input id="input-tenant-cccd" name="cccd" value={form.cccd} onChange={e => F('cccd', e.target.value)} placeholder="079123456789"
                     className={`w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none ${errors.cccd ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`} />
                   <FieldErr msg={errors.cccd} />
                 </div>
@@ -644,9 +644,9 @@ export function PaymentFormModal({
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-slate-600 mb-1">Nơi cấp CCCD</label>
-                      <select 
-                        value={form.issue_place} 
-                        onChange={e => F('issue_place', e.target.value)} 
+                      <select id="select-tenant-issue-place" name="issue_place"
+                        value={form.issue_place}
+                        onChange={e => F('issue_place', e.target.value)}
                         className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none"
                       >
                         <option value="Cục Cảnh Sát">Cục Cảnh Sát</option>
@@ -655,19 +655,19 @@ export function PaymentFormModal({
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-slate-600 mb-1">Năm sinh</label>
-                      <input value={form.dob} onChange={e => F('dob', e.target.value)} placeholder="1995"
+                      <input id="input-tenant-dob" name="dob" value={form.dob} onChange={e => F('dob', e.target.value)} placeholder="1995"
                         className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
                     </div>
                     <div className="col-span-2">
                       <label className="block text-xs font-medium text-slate-600 mb-1">Địa chỉ thường trú</label>
-                      <input value={form.address} onChange={e => F('address', e.target.value)} placeholder="Số 123, Đường ABC, Quận 1, TP.HCM"
+                      <input id="input-tenant-address" name="address" value={form.address} onChange={e => F('address', e.target.value)} placeholder="Số 123, Đường ABC, Quận 1, TP.HCM"
                         className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
                     </div>
                   </>
                 )}
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">Thời hạn HĐ (tháng)</label>
-                  <input id="input-contract-duration" type="number" min={minMonths} max={maxMonths} value={form.duration}
+                  <input id="input-contract-duration" name="duration" type="number" min={minMonths} max={maxMonths} value={form.duration}
                     inputMode="numeric"
                     onChange={e => F('duration', Math.max(minMonths, Math.min(maxMonths, Number(e.target.value) || minMonths)))}
                     className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
@@ -698,7 +698,7 @@ export function PaymentFormModal({
                 {/* Additional fields moved into the same grid */}
                 <div className={(!needsNewContract && !isContractEditable) ? 'opacity-70' : ''}>
                   <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Số người ở</label>
-                  <input id="input-people-count" type="number" min={1} value={form.people_count}
+                  <input id="input-people-count" name="people_count" type="number" min={1} value={form.people_count}
                     inputMode="numeric"
                     disabled={!needsNewContract && !isContractEditable}
                     onChange={e => handlePeopleCountChange(Number(e.target.value) || 1)}
@@ -707,13 +707,13 @@ export function PaymentFormModal({
 
                 <div className={`${(!needsNewContract && !isContractEditable) ? 'opacity-70' : ''} ${!form.included_fields?.includes('extra_person_fee') ? 'opacity-40' : ''}`}>
                   <div className="flex items-center gap-1 mb-1">
-                    <input type="checkbox" checked={form.included_fields?.includes('extra_person_fee')} 
+                    <input id="checkbox-extra-person-fee" name="extra_person_fee" type="checkbox" checked={form.included_fields?.includes('extra_person_fee')}
                       disabled={!needsNewContract && !isContractEditable}
                       onChange={() => toggleField('extra_person_fee')}
                       className="w-3 h-3 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 disabled:opacity-50" />
                     <label className="block text-[10px] uppercase font-bold text-slate-400">Phụ thu</label>
                   </div>
-                  <input id="input-breakdown-extra-person" type="number" value={form.extra_person_fee} 
+                  <input id="input-breakdown-extra-person" name="extra_person_fee" type="number" value={form.extra_person_fee} 
                     disabled={!needsNewContract && !isContractEditable}
                     onChange={e => handleBreakdownChange('extra_person_fee', Number(e.target.value))}
                     step="1000" inputMode="numeric"
@@ -722,7 +722,7 @@ export function PaymentFormModal({
 
                 <div className={(!needsNewContract && !isContractEditable) ? 'opacity-70' : ''}>
                   <label className="block text-[10px] uppercase font-bold text-rose-500 mb-1">Chiết khấu DV</label>
-                  <input id="input-breakdown-discount" type="number" value={form.discount} 
+                  <input id="input-breakdown-discount" name="discount" type="number" value={form.discount} 
                     disabled={!needsNewContract && !isContractEditable}
                     onChange={e => handleBreakdownChange('discount', Number(e.target.value))}
                     step="1000" inputMode="numeric"
@@ -731,7 +731,7 @@ export function PaymentFormModal({
 
                 <div>
                   <label className="block text-[10px] uppercase font-bold text-amber-600 mb-1">Nợ kỳ trước</label>
-                  <input id="input-breakdown-debt" type="number" value={form.previous_debt} 
+                  <input id="input-breakdown-debt" name="previous_debt" type="number" value={form.previous_debt} 
                     onChange={e => handleBreakdownChange('previous_debt', Number(e.target.value))}
                     step="1000" inputMode="numeric"
                     className="w-full bg-white border border-amber-200 rounded-lg px-2 py-1 text-sm text-amber-700 focus:ring-1 focus:ring-amber-400 focus:outline-none" />
@@ -749,7 +749,7 @@ export function PaymentFormModal({
                   {form.stayed_days === form.period_days ? (
                     <div className="flex-1 bg-white border border-indigo-200 text-indigo-700 font-bold rounded-xl px-3 py-2 text-sm">1 tháng</div>
                   ) : (
-                    <input id="input-prorate-days" type="number" value={form.stayed_days} onChange={e => handleDaysChange(Number(e.target.value) || 0)}
+                    <input id="input-prorate-days" name="stayed_days" type="number" value={form.stayed_days} onChange={e => handleDaysChange(Number(e.target.value) || 0)}
                       inputMode="numeric"
                       className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
                   )}
@@ -771,8 +771,8 @@ export function PaymentFormModal({
               </div>
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">Kỳ thanh toán (MM/YYYY)</label>
-                <input 
-                  value={form.payment_period} 
+                <input id="input-payment-period" name="payment_period"
+                  value={form.payment_period}
                   onChange={e => F('payment_period', e.target.value)}
                   placeholder="MM/YYYY"
                   className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" 
@@ -789,7 +789,7 @@ export function PaymentFormModal({
             <div className="border-t border-slate-200 pt-3">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <input type="checkbox" 
+                  <input type="checkbox" name="monthly_group"
                     checked={['base_rent', 'water_fee', 'living_fee', 'electric_fee', 'extra_person_fee'].every(k => form.included_fields?.includes(k))}
                     onChange={toggleMonthlyGroup}
                     className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500" />
@@ -808,12 +808,12 @@ export function PaymentFormModal({
                     {key === 'electric_fee' && form.included_fields?.includes('electric_fee') ? (
                       <div className="space-y-1">
                         <div className="flex gap-1">
-                          <input type="number" value={form.old_electric} placeholder="Cũ" onChange={e => handleElectricReadingChange('old_electric', Number(e.target.value))}
+                          <input id="input-electric-old" name="old_electric" type="number" value={form.old_electric} placeholder="Cũ" onChange={e => handleElectricReadingChange('old_electric', Number(e.target.value))}
                             className="w-full bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 text-[11px] focus:outline-none" title="Chỉ số cũ" />
-                          <input type="number" value={form.new_electric} placeholder="Mới" onChange={e => handleElectricReadingChange('new_electric', Number(e.target.value))}
+                          <input id="input-electric-new" name="new_electric" type="number" value={form.new_electric} placeholder="Mới" onChange={e => handleElectricReadingChange('new_electric', Number(e.target.value))}
                             className="w-full bg-white border border-indigo-200 rounded px-1.5 py-0.5 text-[11px] focus:outline-none" title="Chỉ số mới" />
                         </div>
-                        <input id={`input-breakdown-${key}`} type="number" value={(form as any)[key]} onChange={e => handleBreakdownChange(key, Number(e.target.value))}
+                        <input id={`input-breakdown-${key}`} name={key} type="number" value={(form as any)[key]} onChange={e => handleBreakdownChange(key, Number(e.target.value))}
                           step="1000" inputMode="numeric"
                           className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-sm font-bold text-indigo-600 focus:ring-1 focus:ring-indigo-400 focus:outline-none" />
                       </div>
@@ -839,11 +839,11 @@ export function PaymentFormModal({
             <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <input type="checkbox" checked={form.included_fields?.includes('deposit_fee')} onChange={() => toggleField('deposit_fee')}
+                  <input type="checkbox" name="deposit_fee" checked={form.included_fields?.includes('deposit_fee')} onChange={() => toggleField('deposit_fee')}
                     className="w-4 h-4 text-amber-600 border-amber-300 rounded focus:ring-amber-500" />
                   <label className="text-sm font-bold text-amber-800 uppercase tracking-wide">Tiền cọc (Thế chân)</label>
                 </div>
-                <input id="input-breakdown-deposit" type="number" value={form.deposit_fee} onChange={e => handleBreakdownChange('deposit_fee', Number(e.target.value))}
+                <input id="input-breakdown-deposit" name="deposit_fee" type="number" value={form.deposit_fee} onChange={e => handleBreakdownChange('deposit_fee', Number(e.target.value))}
                   step="1000" inputMode="numeric"
                   className={`w-32 bg-white border rounded-xl px-3 py-2 text-sm font-bold text-right ${form.included_fields?.includes('deposit_fee') ? 'border-amber-200 text-amber-700' : 'border-amber-50 opacity-40'}`} />
               </div>
@@ -866,7 +866,7 @@ export function PaymentFormModal({
               </div>
               <div className="w-40 text-right">
                 <label className="block text-xs font-medium text-slate-600 mb-1">Số tiền thực thu<RequiredStar /></label>
-                <input id="input-actual-amount" type="number" value={form.amount} onChange={e => handleAmountChange(Number(e.target.value))}
+                <input id="input-actual-amount" name="amount" type="number" value={form.amount} onChange={e => handleAmountChange(Number(e.target.value))}
                   step="1000" inputMode="numeric"
                   className={`w-full bg-white border rounded-xl px-3 py-2 text-sm font-bold text-indigo-700 focus:ring-2 focus:ring-indigo-400 focus:outline-none ${errors.amount ? 'border-rose-400 bg-rose-50/30' : 'border-indigo-200'}`} />
                 {form.amount > 0 && <p className="text-[10px] font-bold text-indigo-500 mt-1">{formatVND(form.amount)}</p>}
@@ -897,7 +897,7 @@ export function PaymentFormModal({
             {/* Receiver */}
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Người nhận<RequiredStar /></label>
-              <select id="select-receiver" value={form.receiver} onChange={e => onReceiverChange(e.target.value)}
+              <select id="select-receiver" name="receiver" value={form.receiver} onChange={e => onReceiverChange(e.target.value)}
                 disabled={editItem && editItem.receiver !== 'Chưa nhận' && editItem.receiver !== ''}
                 className={`w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none ${editItem && editItem.receiver !== 'Chưa nhận' && editItem.receiver !== '' ? 'bg-slate-50 opacity-70 cursor-not-allowed' : ''} ${errors.receiver ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`}>
                 <option value="Chưa nhận">Chưa nhận</option>
@@ -910,7 +910,7 @@ export function PaymentFormModal({
             {form.receiver !== 'Chưa nhận' && (
               <div className="col-span-2">
                 <label className="block text-xs font-medium text-slate-600 mb-1">Hình thức</label>
-                <select id="select-payment-method" value={form.method} onChange={e => F('method', e.target.value)}
+                <select id="select-payment-method" name="method" value={form.method} onChange={e => F('method', e.target.value)}
                   className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none">
                   <option value="Tiền mặt">Tiền mặt</option>
                   <option value="Chuyển khoản">Chuyển khoản</option>
@@ -922,7 +922,7 @@ export function PaymentFormModal({
           {/* Note */}
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Ghi chú</label>
-            <textarea id="textarea-note" value={form.note} onChange={e => F('note', e.target.value)} rows={2} placeholder="Tháng 4/2026..."
+            <textarea id="textarea-note" name="note" value={form.note} onChange={e => F('note', e.target.value)} rows={2} placeholder="Tháng 4/2026..."
               className={`w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none`} />
           </div>
 

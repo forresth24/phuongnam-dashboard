@@ -180,36 +180,36 @@ export function TenantsTab({ config, data, loading, role, onRefresh }: Props) {
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Phòng</label>
-            <select value={form.room_id} onChange={e => F('room_id', e.target.value)} disabled={!!editItem} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none disabled:bg-slate-50">
+            <select id="select-tenant-room" name="room_id" value={form.room_id} onChange={e => F('room_id', e.target.value)} disabled={!!editItem} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none disabled:bg-slate-50">
               <option value="">Chọn phòng</option>
               {data.rooms.map((r: any) => <option key={r.id} value={r.id}>{r.name} ({r.id})</option>)}
             </select>
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Họ tên *</label>
-            <input value={form.name} onChange={e => F('name', e.target.value)} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
+            <input id="input-tenant-name" name="name" value={form.name} onChange={e => F('name', e.target.value)} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">SĐT</label>
-            <input value={form.phone} onChange={e => F('phone', e.target.value)} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
+            <input id="input-tenant-phone" name="phone" value={form.phone} onChange={e => F('phone', e.target.value)} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">CCCD</label>
-            <input value={form.cccd} onChange={e => F('cccd', e.target.value)} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
+            <input id="input-tenant-cccd" name="cccd" value={form.cccd} onChange={e => F('cccd', e.target.value)} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Ngày sinh</label>
-            <input value={form.dob} onChange={e => F('dob', e.target.value)} placeholder="DD/MM/YYYY" className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
+            <input id="input-tenant-dob" name="dob" value={form.dob} onChange={e => F('dob', e.target.value)} placeholder="DD/MM/YYYY" className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Ngày cấp CCCD</label>
-            <input value={form.issue_date} onChange={e => F('issue_date', e.target.value)} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
+            <input id="input-tenant-issue-date" name="issue_date" value={form.issue_date} onChange={e => F('issue_date', e.target.value)} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Nơi cấp</label>
-            <select 
-              value={form.issue_place} 
-              onChange={e => F('issue_place', e.target.value)} 
+            <select id="select-tenant-issue-place" name="issue_place"
+              value={form.issue_place}
+              onChange={e => F('issue_place', e.target.value)}
               className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none"
             >
               <option value="Cục Cảnh Sát">Cục Cảnh Sát</option>
@@ -218,7 +218,7 @@ export function TenantsTab({ config, data, loading, role, onRefresh }: Props) {
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Địa chỉ</label>
-            <input value={form.address} onChange={e => F('address', e.target.value)} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
+            <input id="input-tenant-address" name="address" value={form.address} onChange={e => F('address', e.target.value)} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
           </div>
           <div className="col-span-2">
             <button onClick={handleSave} disabled={saving || !form.room_id || !form.name} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-xl font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2">

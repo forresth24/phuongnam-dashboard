@@ -321,20 +321,20 @@ export function ExpensesTab({ config, data, loading, role, onRefresh }: Props) {
                 {/* Type */}
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Loại chi phí</label>
-                  <select value={form.expense_type} onChange={e => setForm({ ...form, expense_type: e.target.value })} className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none">
+                  <select id="select-expense-type" name="expense_type" value={form.expense_type} onChange={e => setForm({ ...form, expense_type: e.target.value })} className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none">
                     {EXPENSE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </div>
                 {/* Amount */}
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Số tiền (VNĐ)</label>
-                  <input type="number" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} placeholder="500000" className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
+                  <input id="input-expense-amount" name="amount" type="number" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} placeholder="500000" className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
                 </div>
                 {/* Date */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Ngày phát sinh</label>
-                    <input type="date" value={form.expense_date_iso} onChange={e => {
+                    <input id="input-expense-date" name="expense_date" type="date" value={form.expense_date_iso} onChange={e => {
                       const iso = e.target.value;
                       setForm({
                         ...form,
@@ -346,12 +346,12 @@ export function ExpensesTab({ config, data, loading, role, onRefresh }: Props) {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Kỳ (MM/YYYY)</label>
-                    <input type="text" value={form.period} onChange={e => setForm({ ...form, period: e.target.value })} placeholder="05/2026" className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
+                    <input id="input-expense-period" name="period" type="text" value={form.period} onChange={e => setForm({ ...form, period: e.target.value })} placeholder="05/2026" className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
                   </div>
                 </div>
                 {/* Reimbursement Toggle */}
                 <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl">
-                  <input type="checkbox" id="is_reimbursement" checked={form.is_reimbursement} onChange={e => setForm({ ...form, is_reimbursement: e.target.checked, paid_by: e.target.checked ? form.paid_by : '' })} className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                  <input type="checkbox" id="is_reimbursement" name="is_reimbursement" checked={form.is_reimbursement} onChange={e => setForm({ ...form, is_reimbursement: e.target.checked, paid_by: e.target.checked ? form.paid_by : '' })} className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
                   <label htmlFor="is_reimbursement" className="text-sm font-medium text-slate-700 cursor-pointer">
                     Chi hộ chủ nhà <span className="text-slate-400 font-normal">(chủ nhà sẽ trả lại)</span>
                   </label>
@@ -360,13 +360,13 @@ export function ExpensesTab({ config, data, loading, role, onRefresh }: Props) {
                 {form.is_reimbursement && (
                   <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Người chi hộ</label>
-                    <input type="text" value={form.paid_by} onChange={e => setForm({ ...form, paid_by: e.target.value })} placeholder="Tên người chi hộ" className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
+                    <input id="input-expense-paid-by" name="paid_by" type="text" value={form.paid_by} onChange={e => setForm({ ...form, paid_by: e.target.value })} placeholder="Tên người chi hộ" className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
                   </motion.div>
                 )}
                 {/* Note */}
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Ghi chú</label>
-                  <textarea value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} rows={2} placeholder="Mô tả chi phí..." className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none resize-none" />
+                  <textarea id="textarea-expense-note" name="note" value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} rows={2} placeholder="Mô tả chi phí..." className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none resize-none" />
                 </div>
               </div>
               <div className="p-6 border-t border-slate-100 flex justify-end gap-3">
