@@ -142,6 +142,8 @@ export const API = {
     other_deductions?: string | number;
     debt_total?: string | number;
     cleaning_fee?: string | number;
+    water_fee?: string | number;
+    service_fee?: string | number;
     stayed_days?: string | number;
     full_rent?: string | number;
     prorated_rent?: string | number;
@@ -156,6 +158,8 @@ export const API = {
     if (options?.other_deductions) params.set('other_deductions', String(options.other_deductions));
     if (options?.debt_total) params.set('debt_total', String(options.debt_total));
     if (options?.cleaning_fee) params.set('cleaning_fee', String(options.cleaning_fee));
+    if (options?.water_fee) params.set('water_fee', String(options.water_fee));
+    if (options?.service_fee) params.set('service_fee', String(options.service_fee));
     if (options?.stayed_days) params.set('stayed_days', String(options.stayed_days));
     if (options?.full_rent) params.set('full_rent', String(options.full_rent));
     if (options?.prorated_rent) params.set('prorated_rent', String(options.prorated_rent));
