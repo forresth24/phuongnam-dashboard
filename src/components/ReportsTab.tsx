@@ -42,6 +42,8 @@ export function ReportsTab({ data, loading }: Props) {
 
   const [selectedPeriod, setSelectedPeriod] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [fromDatetime, setFromDatetime] = useState('');
+  const [toDatetime, setToDatetime] = useState('');
 
   // Extract all available periods from payments
   const availablePeriods = useMemo(() => {
@@ -65,33 +67,46 @@ export function ReportsTab({ data, loading }: Props) {
     });
   }, [data, defaultPeriod]);
 
-  // Deposit collected per contract (across ALL payments, not just current period)
-  // because deposit is a one-time payment, not monthly
-  const depositPaidByContract = useMemo(() => {
-    const map: Record<string, number> = {};
-    if (!data?.payments) return map;
-    for (const p of data.payments) {
-      const cId = p.contract_id || '';
-      if (cId) {
-        const deposit = safeParseNumber(p.deposit_fee);
-        if (deposit > 0) {
-          map[cId] = (map[cId] || 0) + deposit;
+  /* ── Helper: parse payment datetime for time range filter ── */
+  const getPaymentTime = (p: any): Date | null => {
+    for (const field of ['updated_at', 'completed_date', 'received_date', 'date']) {
+      const v = p[field];
+      if (!v) continue;
+      const d = new Date(v);
+      if (!isNaN(d.getTime())) return d;
+      // Try DD/MM/YYYY HH:mm:ss format
+      if (typeof v === 'string' && v.includes('/')) {
+        const m = v.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
+        if (m) {
+          const d2 = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]), Number(m[4] || 0), Number(m[5] || 0), Number(m[6] || 0));
+          if (!isNaN(d2.getTime())) return d2;
         }
       }
     }
-    return map;
-  }, [data]);
+    return null;
+  };
 
   const reportData = useMemo(() => {
-    if (!data || !selectedPeriod) return [];
+    if (!data) return [];
+    if (!selectedPeriod && !fromDatetime && !toDatetime) return [];
 
-    const targetPayments = data.payments.filter(p => {
+    let targetPayments = data.payments.filter(p => {
       let period = p.payment_period;
       if (!period && p.received_date) {
         period = p.received_date;
       }
       return normalizePeriod(period) === normalizePeriod(selectedPeriod);
     });
+
+    // Apply datetime range filter on top of period filter
+    if (fromDatetime || toDatetime) {
+      const fromTime = fromDatetime ? new Date(fromDatetime).getTime() : -Infinity;
+      const toTime = toDatetime ? new Date(toDatetime).getTime() : Infinity;
+      targetPayments = targetPayments.filter(p => {
+        const pt = getPaymentTime(p);
+        return pt && pt.getTime() >= fromTime && pt.getTime() <= toTime;
+      });
+    }
 
     const [selMonth, selYear] = selectedPeriod.split('/').map(Number);
     const selTime = selYear * 12 + selMonth;
@@ -279,7 +294,6 @@ export function ReportsTab({ data, loading }: Props) {
         room_id: roomId,
         duration: contract.duration || '',
         stayed_days: stayedDays,
-        deposit_paid: depositPaidByContract[contractId] || 0,
         rent: safeParseNumber(contract.rent) + safeParseNumber(contract.extra_person_fee),
         base_rent: group.base_rent,
         water_total: group.water_total,
@@ -303,9 +317,7 @@ export function ReportsTab({ data, loading }: Props) {
     // Recalculate STT
     return rows.map((r, i) => ({ ...r, stt: i + 1 }));
 
-  }, [data, selectedPeriod]);
-
-  // Apply search filter
+  }, [data, selectedPeriod, fromDatetime, toDatetime]);
   const filteredReportData = useMemo(() => {
     if (!searchTerm) return reportData;
     const lower = searchTerm.toLowerCase();
@@ -315,13 +327,14 @@ export function ReportsTab({ data, loading }: Props) {
     );
   }, [reportData, searchTerm]);
 
-  const grandDeposit = filteredReportData.reduce((sum, row) => sum + row.deposit_paid, 0);
   const grandNetRevenue = filteredReportData.reduce((sum, row) => sum + row.net_revenue, 0);
   const grandBaseRent = filteredReportData.reduce((sum, row) => sum + row.base_rent, 0);
   const grandWater = filteredReportData.reduce((sum, row) => sum + row.water_total, 0);
   const grandSurcharge = filteredReportData.reduce((sum, row) => sum + row.surcharge_total, 0);
   const grandElectricUsage = filteredReportData.reduce((sum, row) => sum + row.electric_usage, 0);
   const grandElectric = filteredReportData.reduce((sum, row) => sum + row.electric_total, 0);
+
+  const periodLabel = selectedPeriod ? ` cho kỳ ${selectedPeriod}` : fromDatetime || toDatetime ? ` trong mốc thời gian đã chọn` : '';
 
   const periodExpenses = useMemo(() => {
     if (!data?.expenses || !selectedPeriod) return [];
@@ -338,7 +351,6 @@ export function ReportsTab({ data, loading }: Props) {
       'STT', 'Ngày ký HĐ', 'Tầng', 'Phòng', 'TG thuê (Tháng)', 'Số ngày ở',
       'Giá cho thuê (VND)', 'Giá TT thực tế (i) (VND)', 'Nước (k) (VND)', 'Phí DV (l) (VND)',
       'CSĐ đầu', 'CSĐ cuối', 'Tổng số điện', 'Điện (m) (VND)',
-      'Khoản phải trả (Tiền cọc) (VND)',
       'Tổng cộng (ii) (VND)'
     ];
 
@@ -346,7 +358,7 @@ export function ReportsTab({ data, loading }: Props) {
       r.stt, r.move_in_date, r.floor, r.room_id, r.duration, r.stayed_days,
       r.rent, r.base_rent, r.water_total, r.surcharge_total,
       r.electric_old, r.electric_new, r.electric_usage, r.electric_total,
-      r.deposit_paid, r.net_revenue
+      r.net_revenue
     ]);
 
     // Add Column Totals row
@@ -359,7 +371,6 @@ export function ReportsTab({ data, loading }: Props) {
       '', '',
       grandElectricUsage,
       grandElectric,
-      grandDeposit,
       grandNetRevenue
     ]);
 
@@ -446,6 +457,18 @@ export function ReportsTab({ data, loading }: Props) {
               <option key={p} value={p}>Kỳ: {p}</option>
             ))}
           </select>
+          <div className="flex items-center gap-2 text-sm text-slate-500">
+            <span className="font-medium whitespace-nowrap">Mốc TG:</span>
+            <input type="datetime-local" value={fromDatetime} onChange={e => setFromDatetime(e.target.value)}
+              className="px-2 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
+            <span>→</span>
+            <input type="datetime-local" value={toDatetime} onChange={e => setToDatetime(e.target.value)}
+              className="px-2 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
+            {(fromDatetime || toDatetime) && (
+              <button onClick={() => { setFromDatetime(''); setToDatetime(''); }}
+                className="text-xs text-red-500 hover:text-red-700 font-medium ml-1">Xoá</button>
+            )}
+          </div>
           <div className="relative">
             <Search className="absolute left-3 top-2.5 text-slate-400" size={16} />
             <input id="input-report-search" name="search"
@@ -478,7 +501,7 @@ export function ReportsTab({ data, loading }: Props) {
           </div>
           <div className="text-center pt-8">
             <h1 className="text-2xl font-bold uppercase">Báo Cáo Kinh Doanh</h1>
-            <p className="text-lg mt-2">Kỳ thanh toán: {selectedPeriod}</p>
+            <p className="text-lg mt-2">Kỳ thanh toán: {selectedPeriod}{fromDatetime ? ` • Từ: ${new Date(fromDatetime).toLocaleString('vi-VN')}` : ''}{toDatetime ? ` • Đến: ${new Date(toDatetime).toLocaleString('vi-VN')}` : ''}</p>
           </div>
         </div>
         <div className="overflow-x-auto print:overflow-visible">
@@ -502,8 +525,6 @@ export function ReportsTab({ data, loading }: Props) {
                 <th className="px-2 py-3 font-semibold border-b border-slate-200 print:border-black text-right text-[10px]">Tiêu thụ</th>
                 <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black text-right whitespace-nowrap">Điện (m) (VND)</th>
 
-                <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black text-right whitespace-nowrap text-amber-700 print:text-black">Khoản phải trả (Tiền cọc) (VND)</th>
-
                 <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black text-right whitespace-nowrap text-indigo-700 print:text-black">Tổng cộng (ii) (VND)</th>
                 <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black min-w-[150px]">Ghi chú</th>
               </tr>
@@ -525,18 +546,17 @@ export function ReportsTab({ data, loading }: Props) {
                   <td className="px-2 py-2 text-right text-slate-500 text-xs print:border-b print:border-slate-300">{r.electric_new}</td>
                   <td className="px-2 py-2 text-right text-slate-700 font-medium text-xs print:border-b print:border-slate-300">{r.electric_usage}</td>
                   <td className="px-3 py-2 text-right text-rose-600 print:border-b print:border-slate-300 print:text-black">{formatVND(r.electric_total)}</td>
-                  <td className="px-3 py-2 text-right text-amber-600 print:border-b print:border-slate-300 print:text-black">{formatVND(r.deposit_paid)}</td>
                   <td className="px-3 py-2 text-right font-bold text-indigo-600 print:border-b print:border-slate-300 print:text-black">{formatVND(r.net_revenue)}</td>
                   <td className="px-3 py-2 text-xs text-slate-500 max-w-[200px] truncate print:whitespace-normal print:border-b print:border-slate-300" title={r.note}>{r.note || '—'}</td>
                 </motion.tr>
               ))}
               {filteredReportData.length === 0 && (
                 <tr>
-                  <td colSpan={17} className="px-4 py-8 text-center text-slate-400 print:hidden">
-                    {selectedPeriod ? `Không có dữ liệu cho kỳ ${selectedPeriod}` : 'Chọn Kỳ thanh toán để xem báo cáo kinh doanh'}
+                  <td colSpan={16} className="px-4 py-8 text-center text-slate-400 print:hidden">
+                    {periodLabel ? `Không có dữ liệu${periodLabel}` : 'Chọn Kỳ hoặc mốc thời gian để xem báo cáo kinh doanh'}
                   </td>
-                  <td colSpan={15} className="px-4 py-8 text-center text-slate-400 hidden print:table-cell print:border-b print:border-slate-300">
-                    {selectedPeriod ? `Không có dữ liệu cho kỳ ${selectedPeriod}` : 'Chọn Kỳ thanh toán để xem báo cáo kinh doanh'}
+                  <td colSpan={14} className="px-4 py-8 text-center text-slate-400 hidden print:table-cell print:border-b print:border-slate-300">
+                    {periodLabel ? `Không có dữ liệu${periodLabel}` : 'Chọn Kỳ hoặc mốc thời gian để xem báo cáo kinh doanh'}
                   </td>
                 </tr>
               )}
@@ -569,9 +589,6 @@ export function ReportsTab({ data, loading }: Props) {
                 </td>
                 <td className="px-3 py-3 text-right font-bold text-rose-600 print:text-black whitespace-nowrap">
                   {formatVND(grandElectric)}
-                </td>
-                <td className="px-3 py-3 text-right font-bold text-amber-700 print:text-black whitespace-nowrap">
-                  {formatVND(grandDeposit)}
                 </td>
                 <td className="px-3 py-3 text-right font-black text-indigo-700 print:text-black whitespace-nowrap">
                   {formatVND(grandNetRevenue)}

@@ -142,6 +142,10 @@ export const API = {
     other_deductions?: string | number;
     debt_total?: string | number;
     cleaning_fee?: string | number;
+    stayed_days?: string | number;
+    full_rent?: string | number;
+    prorated_rent?: string | number;
+    rent_overpayment?: string | number;
   }) => {
     const params = new URLSearchParams();
     if (options?.final_electric_reading) params.set('final_electric_reading', String(options.final_electric_reading));
@@ -152,6 +156,10 @@ export const API = {
     if (options?.other_deductions) params.set('other_deductions', String(options.other_deductions));
     if (options?.debt_total) params.set('debt_total', String(options.debt_total));
     if (options?.cleaning_fee) params.set('cleaning_fee', String(options.cleaning_fee));
+    if (options?.stayed_days) params.set('stayed_days', String(options.stayed_days));
+    if (options?.full_rent) params.set('full_rent', String(options.full_rent));
+    if (options?.prorated_rent) params.set('prorated_rent', String(options.prorated_rent));
+    if (options?.rent_overpayment) params.set('rent_overpayment', String(options.rent_overpayment));
     const qs = params.toString();
     return fetchApi<{ base64: string; filename: string }>(config, `/api/pdf/termination/${contractId}${qs ? '?' + qs : ''}`);
   },

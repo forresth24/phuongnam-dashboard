@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Pencil, Trash2, Archive, Loader2, FileDown, FileText, ArrowUpDown, ChevronUp, ChevronDown, RefreshCw, ScrollText } from 'lucide-react';
+import { Plus, Pencil, Trash2, Archive, Loader2, FileDown, ArrowUpDown, ChevronUp, ChevronDown, RefreshCw, ScrollText } from 'lucide-react';
 import { API, downloadBase64Pdf } from '../lib/api';
 import type { AppConfig, DashboardData, UserRole } from '../lib/api';
 import { Badge } from './ui/Badge';
@@ -70,14 +70,15 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
   const [forfeitDeposit, setForfeitDeposit] = useState(false);
   const [acting, setActing] = useState(false);
   const [finalElectricReading, setFinalElectricReading] = useState<string>('');
+  const [moveOutElectricReading, setMoveOutElectricReading] = useState<string>('');
   const [debtTotal, setDebtTotal] = useState<string>('');
   const [cleaningFee, setCleaningFee] = useState<string>('');
+  const [stayedDays, setStayedDays] = useState<number>(30);
   const [showCalcBreakdown, setShowCalcBreakdown] = useState(false);
   const [calculatedConsumption, setCalculatedConsumption] = useState(0);
   const [calculatedElectricCost, setCalculatedElectricCost] = useState(0);
-  const [calculatedRefund, setCalculatedRefund] = useState(0);
   const [pdfLoading, setPdfLoading] = useState<string | null>(null);
-  const [terminationPdfTarget, setTerminationPdfTarget] = useState<any>(null);
+
   const [restoringId, setRestoringId] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<string>('room_id');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
@@ -253,27 +254,29 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
     try {
       await API.endContract(config, archiveId, {
         forfeitDeposit,
-        final_electric_reading: finalElectricReading || undefined,
+        final_electric_reading: moveOutElectricReading || undefined,
       });
 
       if (!forfeitDeposit) {
         const contract = (data?.contracts_all || data?.contracts || []).find((c: any) => c.id === archiveId);
         if (contract) {
           const depositAmount = Number(contract.deposit_paid) || 0;
-          let refundAmount = depositAmount;
-          let note = `Trả cọc - Phòng ${contract.room_id} - ${getTenantName(contract)}`;
+          const baselineReading = finalElectricReading ? Number(finalElectricReading) : NaN;
+          const moveOutReading = moveOutElectricReading ? Number(moveOutElectricReading) : NaN;
+          const electricPrice = Number(data?.settings?.ELECTRIC_PRICE) || 3500;
+          const debt = Number(debtTotal) || 0;
+          const cleaning = Number(cleaningFee) || 0;
 
-          if (finalElectricReading) {
-            const startElectric = Number(contract.start_electric) || 0;
-            const finalReading = Number(finalElectricReading);
-            if (!isNaN(finalReading) && finalReading > startElectric) {
-              const consumption = finalReading - startElectric;
-              const electricPrice = Number(data?.settings?.ELECTRIC_PRICE) || 3500;
-              const electricCost = consumption * electricPrice;
-              refundAmount = Math.max(0, depositAmount - electricCost);
-              note += ` (Điện: ${finalReading} - ${startElectric} = ${consumption}kWh x ${formatVND(electricPrice, false)} = ${formatVND(electricCost, false)})`;
-            }
+          let note = `Trả cọc - Phòng ${contract.room_id} - ${getTenantName(contract)}`;
+          let electricCost = 0;
+
+          if (!isNaN(moveOutReading) && !isNaN(baselineReading) && moveOutReading > baselineReading) {
+            const consumption = moveOutReading - baselineReading;
+            electricCost = consumption * electricPrice;
+            note += ` (Điện: ${moveOutReading} - ${baselineReading} = ${consumption}kWh x ${formatVND(electricPrice, false)} = ${formatVND(electricCost, false)})`;
           }
+
+          const refundAmount = Math.max(0, depositAmount - debt - cleaning - electricCost);
 
           if (refundAmount > 0) {
             const now = new Date();
@@ -297,6 +300,8 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
       setArchiveId(null);
       setForfeitDeposit(false);
       setFinalElectricReading('');
+      setMoveOutElectricReading('');
+      setStayedDays(30);
       setShowCalcBreakdown(false);
       onRefresh();
     }
@@ -321,33 +326,41 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
     setPdfLoading(`termination_${contract.id}`);
     try {
       const deposit = Number(contract.deposit_paid) || 0;
-      const startElectric = Number(contract.start_electric) || 0;
-      const finalReading = finalElectricReading ? Number(finalElectricReading) : NaN;
+      const baselineReading = finalElectricReading ? Number(finalElectricReading) : NaN;
+      const moveOutReading = moveOutElectricReading ? Number(moveOutElectricReading) : NaN;
       const electricPrice = Number(data?.settings?.ELECTRIC_PRICE) || 3500;
       const debt = Number(debtTotal) || 0;
       const cleaning = Number(cleaningFee) || 0;
+      const fullRent = Number(contract.rent) || 0;
+      const daysStayed = stayedDays || 30;
 
       let consumption = 0;
       let electricCost = 0;
       let totalDeductions = debt + cleaning;
       let refundAmount = deposit;
 
-      if (!isNaN(finalReading) && finalReading > startElectric) {
-        consumption = finalReading - startElectric;
+      const proratedRent = Math.round(fullRent / 30 * daysStayed);
+      const rentOverpayment = Math.max(0, fullRent - proratedRent);
+
+      if (!isNaN(moveOutReading) && !isNaN(baselineReading) && moveOutReading > baselineReading) {
+        consumption = moveOutReading - baselineReading;
         electricCost = consumption * electricPrice;
         totalDeductions += electricCost;
-        refundAmount = Math.max(0, deposit - electricCost);
       }
       refundAmount = Math.max(0, deposit - totalDeductions);
 
       const res = await API.getTerminationPdf(config, contract.id, {
-        final_electric_reading: !isNaN(finalReading) ? finalReading : undefined,
+        final_electric_reading: !isNaN(moveOutReading) ? moveOutReading : undefined,
         electric_consumption: consumption || undefined,
         electric_cost: electricCost || undefined,
         electric_price: electricPrice,
         refund_amount: refundAmount,
         debt_total: debt || undefined,
         cleaning_fee: cleaning || undefined,
+        stayed_days: daysStayed,
+        full_rent: fullRent || undefined,
+        prorated_rent: proratedRent || undefined,
+        rent_overpayment: rentOverpayment || undefined,
       });
 
       if (res) downloadBase64Pdf(res.base64, res.filename);
@@ -485,28 +498,35 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
                         >
                           {pdfLoading === `sub_contract_${c.id}` ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} />}
                         </button>
-                        {isAdmin && c.status !== 'active' && <button onClick={() => handleTerminationPdf(c)} disabled={pdfLoading === `termination_${c.id}`} title="Biên bản thanh lý HĐ" className="p-1.5 rounded-lg hover:bg-violet-50 text-slate-400 hover:text-violet-600 disabled:opacity-50">{pdfLoading === `termination_${c.id}` ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}</button>}
                         {isAdmin && <button onClick={() => openEdit(c)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-indigo-600"><Pencil size={14} /></button>}
                         {isAdmin && c.status === 'active' && <button onClick={() => {
                           const contractPayments = (data.payments || []).filter(
                             (p: any) => String(p.contract_id).trim() === String(c.id).trim()
                           );
-                          const unpaidPayments = contractPayments.filter(
-                            (p: any) => !p.status || p.status === 'Chưa tới chủ nhà'
-                          );
                           let defaultReading = '';
-                          if (unpaidPayments.length > 0) {
-                            const sorted = [...unpaidPayments].sort((a, b) =>
-                              (b.updated_at || b.received_date || '').localeCompare(a.updated_at || a.received_date || '')
+                          if (contractPayments.length > 0) {
+                            const sorted = [...contractPayments].sort((a, b) =>
+                              (b.received_date || b.date || '').localeCompare(a.received_date || a.date || '')
                             );
-                            defaultReading = String(sorted[0].new_electric || sorted[0].old_electric || '');
+                            const latest = sorted[0];
+                            const isPaid = latest.status === 'Hoàn thành' || latest.status === 'Đã hoàn thành';
+                            if (isPaid) {
+                              // Payment đã thanh toán → lấy chỉ số cuối (new_electric) làm mốc
+                              defaultReading = String(latest.new_electric || latest.old_electric || '');
+                            } else {
+                              // Payment chưa thanh toán → lấy chỉ số cũ (old_electric) làm mốc
+                              defaultReading = String(latest.old_electric || latest.new_electric || '');
+                            }
                           }
-                          setTerminationPdfTarget(c);
+                          setArchiveId(c.id);
+                          setForfeitDeposit(false);
                           setFinalElectricReading(defaultReading);
+                          setMoveOutElectricReading('');
                           setDebtTotal('');
                           setCleaningFee('');
-                        }} title="Xuất Biên bản thanh lý (PDF)" className="p-1.5 rounded-lg hover:bg-violet-50 text-slate-400 hover:text-violet-600"><ScrollText size={14} /></button>}
-                        {isAdmin && c.status === 'active' && <button onClick={() => { setArchiveId(c.id); setForfeitDeposit(false); setFinalElectricReading(''); setDebtTotal(''); setCleaningFee(''); setShowCalcBreakdown(false); }} title="Kết thúc & Archive" className="p-1.5 rounded-lg hover:bg-amber-50 text-slate-400 hover:text-amber-600"><Archive size={14} /></button>}
+                          setStayedDays(30);
+                          setShowCalcBreakdown(false);
+                        }} title="Kết thúc & Archive" className="p-1.5 rounded-lg hover:bg-amber-50 text-slate-400 hover:text-amber-600"><Archive size={14} /></button>}
                         {isAdmin && <button onClick={() => setDeleteId(c.id)} className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600"><Trash2 size={14} /></button>}
                         {isAdmin && c.status !== 'active' && (
                           <button onClick={() => handleRestore(c.id)} disabled={restoringId === c.id} title="Khôi phục hợp đồng"
@@ -706,43 +726,53 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
           </label>
           {!forfeitDeposit && (
             <div className="space-y-2">
+              {/* Prorated rent for early termination */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-2">
+                <label className="block text-xs font-medium text-slate-600 mb-1">Số ngày ở thực tế tháng cuối</label>
+                <input id="input-archive-stayed-days" type="number" min={1} max={31} value={stayedDays}
+                  onChange={e => setStayedDays(Math.max(1, Math.min(31, Number(e.target.value) || 30)))}
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
+              </div>
+              {/* Baseline reading from payment — readonly display */}
+              {finalElectricReading && (
+                <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Chỉ số điện cuối (mốc)</label>
+                  <p id="input-archive-electric-baseline" className="text-sm font-semibold text-slate-800">{finalElectricReading}</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Từ payment gần nhất, tự động điền</p>
+                </div>
+              )}
               <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Chỉ số điện cuối (nếu có)</label>
-                <input
-                  type="number"
-                  value={finalElectricReading}
+                <label className="block text-xs font-medium text-slate-600 mb-1">Chỉ số điện tính tới ngày trả phòng</label>
+                <input id="input-archive-electric-moveout" type="number" value={moveOutElectricReading}
                   onChange={e => {
                     const v = e.target.value;
-                    setFinalElectricReading(v);
+                    setMoveOutElectricReading(v);
                     const contract = (data?.contracts_all || data?.contracts || []).find((c: any) => c.id === archiveId);
-                    if (contract && v) {
-                      const startElectric = Number(contract.start_electric) || 0;
-                      const finalReading = Number(v);
-                      if (!isNaN(finalReading) && finalReading > startElectric) {
-                        const consumption = finalReading - startElectric;
-                        const electricPrice = Number(data?.settings?.ELECTRIC_PRICE) || 3500;
-                        const electricCost = consumption * electricPrice;
+                    if (contract && v && finalElectricReading) {
+                      const baseline = Number(finalElectricReading);
+                      const moveOut = Number(v);
+                      const electricPrice = Number(data?.settings?.ELECTRIC_PRICE) || 3500;
+
+                      let electricCost = 0;
+                      if (!isNaN(moveOut) && !isNaN(baseline) && moveOut > baseline) {
+                        const consumption = moveOut - baseline;
+                        electricCost = consumption * electricPrice;
                         setCalculatedConsumption(consumption);
                         setCalculatedElectricCost(electricCost);
-                        const debt = Number(debtTotal) || 0;
-                        const cleaning = Number(cleaningFee) || 0;
-                        setCalculatedRefund(Math.max(0, (Number(contract.deposit_paid) || 0) - electricCost - debt - cleaning));
-                        setShowCalcBreakdown(true);
-                      } else {
-                        setShowCalcBreakdown(false);
                       }
+                      setShowCalcBreakdown(true);
                     } else {
                       setShowCalcBreakdown(false);
                     }
                   }}
-                  placeholder="Nhập chỉ số điện mới"
+                  placeholder="Nhập chỉ số điện thực tế"
                   className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                 />
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">Nợ kỳ trước (nếu có)</label>
-                  <input
+                  <input id="input-archive-debt"
                     type="number"
                     value={debtTotal}
                     onChange={e => setDebtTotal(e.target.value)}
@@ -752,7 +782,7 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">Phí vệ sinh (nếu có)</label>
-                  <input
+                  <input id="input-archive-cleaning"
                     type="number"
                     value={cleaningFee}
                     onChange={e => setCleaningFee(e.target.value)}
@@ -761,13 +791,46 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
                   />
                 </div>
               </div>
-              {showCalcBreakdown && (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs space-y-1">
-                  <p className="text-slate-700">Điện tiêu thụ: {calculatedConsumption} kWh</p>
-                  <p className="text-slate-700">Tiền điện: {formatVND(calculatedElectricCost)}</p>
-                  <p className="text-blue-800 font-semibold text-sm">Tiền cọc còn lại: {formatVND(calculatedRefund)}</p>
-                </div>
-              )}
+              {showCalcBreakdown && archiveId && (() => {
+                const contract = (data?.contracts_all || data?.contracts || []).find((c: any) => c.id === archiveId);
+                const depositPaid = Number(contract?.deposit_paid) || 0;
+                const fullRent = Number(contract?.rent) || 0;
+                const ds = stayedDays || 30;
+                const proratedRent = Math.round(fullRent / 30 * ds);
+                const rentOverpayment = Math.max(0, fullRent - proratedRent);
+                const debtAmt = Number(debtTotal) || 0;
+                const cleaningAmt = Number(cleaningFee) || 0;
+                const refundAmount = Math.max(0, depositPaid - calculatedElectricCost - debtAmt - cleaningAmt);
+                return (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs space-y-1">
+                    <p className="flex justify-between text-slate-700 font-medium">Số tiền đã cọc:<span>{formatVND(depositPaid)}</span></p>
+                    {rentOverpayment > 0 && (
+                      <p className="flex justify-between text-slate-600">Tiền phòng trả thừa (TK):<span className="text-rose-600">{formatVND(rentOverpayment)}</span></p>
+                    )}
+                    {calculatedElectricCost > 0 && (
+                      <>
+                        <p className="text-slate-700">Điện tiêu thụ: {calculatedConsumption} kWh</p>
+                        <p className="flex justify-between text-slate-600">Tiền điện:<span className="text-rose-600">-{formatVND(calculatedElectricCost)}</span></p>
+                      </>
+                    )}
+                    {debtAmt > 0 && <p className="flex justify-between text-slate-600">Nợ kỳ trước:<span className="text-rose-600">-{formatVND(debtAmt)}</span></p>}
+                    {cleaningAmt > 0 && <p className="flex justify-between text-slate-600">Phí vệ sinh:<span className="text-rose-600">-{formatVND(cleaningAmt)}</span></p>}
+                    <p className="text-blue-800 font-semibold text-sm">Tiền cọc còn lại: {formatVND(refundAmount)}</p>
+                  </div>
+                );
+              })()}
+              {/* PDF Termination button inside archive popup */}
+              {!forfeitDeposit && archiveId && (() => {
+                const c = (data?.contracts_all || data?.contracts || []).find((cc: any) => cc.id === archiveId);
+                return c ? (
+                  <button onClick={() => handleTerminationPdf(c)}
+                    disabled={pdfLoading === `termination_${archiveId}`}
+                    className="w-full bg-violet-600 hover:bg-violet-700 text-white py-2 rounded-xl font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2 text-sm">
+                    {pdfLoading === `termination_${archiveId}` ? <Loader2 size={16} className="animate-spin" /> : <ScrollText size={16} />}
+                    Xuất Biên bản thanh lý (PDF)
+                  </button>
+                ) : null;
+              })()}
               <p className="text-xs text-slate-400">Để trống nếu trả đủ tiền cọc và không có khoản trừ khác.</p>
             </div>
           )}
@@ -777,49 +840,6 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
         </div>
       </ConfirmDialog>
 
-      {/* Termination PDF Only — does NOT end the contract */}
-      <Modal open={!!terminationPdfTarget} onClose={() => { setTerminationPdfTarget(null); setFinalElectricReading(''); setDebtTotal(''); setCleaningFee(''); }} title="Xuất Biên bản thanh lý (Xem trước)" maxWidth="max-w-md">
-        <div className="space-y-4">
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm">
-            <p className="font-medium text-amber-800">⚠️ Hợp đồng chưa kết thúc</p>
-            <p className="text-xs text-amber-600 mt-1">Chỉ xuất PDF Biên bản thanh lý để xem trước. Hợp đồng vẫn còn hiệu lực.</p>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Chỉ số điện cuối (nếu có)</label>
-            <input name="termination-final-electric" id="input-termination-final-electric" type="number" value={finalElectricReading}
-              onChange={e => setFinalElectricReading(e.target.value)} placeholder="Nhập chỉ số điện mới"
-              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Nợ kỳ trước (nếu có)</label>
-              <input name="termination-debt" id="input-termination-debt" type="number" value={debtTotal}
-                onChange={e => setDebtTotal(e.target.value)} placeholder="0"
-                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Phí vệ sinh (nếu có)</label>
-              <input name="termination-cleaning" id="input-termination-cleaning" type="number" value={cleaningFee}
-                onChange={e => setCleaningFee(e.target.value)} placeholder="0"
-                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
-            </div>
-          </div>
-          <div className="flex gap-3 pt-2">
-            <button onClick={() => { setTerminationPdfTarget(null); setFinalElectricReading(''); setDebtTotal(''); setCleaningFee(''); }}
-              className="flex-1 border border-slate-200 hover:bg-slate-50 text-slate-700 py-2.5 rounded-xl font-medium transition-colors text-sm">Hủy</button>
-            <button onClick={async () => {
-              if (!terminationPdfTarget) return;
-              try { await handleTerminationPdf(terminationPdfTarget); setTerminationPdfTarget(null); }
-              catch (e: any) { alert('Lỗi tạo PDF: ' + e.message); }
-              setFinalElectricReading(''); setDebtTotal(''); setCleaningFee('');
-            }} disabled={pdfLoading === `termination_${terminationPdfTarget?.id}`}
-              className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-xl font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2 text-sm shadow-sm shadow-indigo-100">
-              {pdfLoading === `termination_${terminationPdfTarget?.id}` ? <Loader2 size={16} className="animate-spin" /> : <FileText size={16} />}
-              Xuất PDF
-            </button>
-          </div>
-        </div>
-      </Modal>
 
       {/* Sub-Contract Member Selection Modal */}
       <Modal 
