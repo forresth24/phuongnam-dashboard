@@ -44,6 +44,8 @@ export function ReportsTab({ data, loading }: Props) {
   const [searchTerm, setSearchTerm] = useState('');
   const [fromDatetime, setFromDatetime] = useState('');
   const [toDatetime, setToDatetime] = useState('');
+  const [showToCustom, setShowToCustom] = useState(false);
+  const [timeRangeId, setTimeRangeId] = useState(0); // >0 = trigger time range report
 
   // Extract all available periods from payments
   const availablePeriods = useMemo(() => {
@@ -88,33 +90,54 @@ export function ReportsTab({ data, loading }: Props) {
 
   const reportData = useMemo(() => {
     if (!data) return [];
-    if (!selectedPeriod && !fromDatetime && !toDatetime) return [];
+    const usePeriod = !!selectedPeriod;
+    const useTimeRange = timeRangeId > 0 && !!fromDatetime;
+    if (!usePeriod && !useTimeRange) return [];
 
-    let targetPayments = data.payments.filter(p => {
-      let period = p.payment_period;
-      if (!period && p.received_date) {
-        period = p.received_date;
-      }
-      return normalizePeriod(period) === normalizePeriod(selectedPeriod);
-    });
+    // 1. Filter payments
+    let targetPayments = data.payments;
 
-    // Apply datetime range filter on top of period filter
-    if (fromDatetime || toDatetime) {
+    if (usePeriod) {
+      targetPayments = targetPayments.filter(p => {
+        let period = p.payment_period;
+        if (!period && p.received_date) {
+          period = p.received_date;
+        }
+        return normalizePeriod(period) === normalizePeriod(selectedPeriod);
+      });
+    }
+
+    if (useTimeRange) {
       const fromTime = fromDatetime ? new Date(fromDatetime).getTime() : -Infinity;
-      const toTime = toDatetime ? new Date(toDatetime).getTime() : Infinity;
+      const toTime = toDatetime ? new Date(toDatetime).getTime() : new Date().getTime();
       targetPayments = targetPayments.filter(p => {
         const pt = getPaymentTime(p);
         return pt && pt.getTime() >= fromTime && pt.getTime() <= toTime;
       });
     }
 
-    const [selMonth, selYear] = selectedPeriod.split('/').map(Number);
+    // 2. Determine period for contract matching
+    let selMonth, selYear;
+    if (usePeriod) {
+      const parts = selectedPeriod.split('/');
+      selMonth = Number(parts[0]);
+      selYear = Number(parts[1]);
+    } else if (useTimeRange && fromDatetime) {
+      const fd = new Date(fromDatetime);
+      selMonth = fd.getMonth() + 1;
+      selYear = fd.getFullYear();
+    } else {
+      selMonth = new Date().getMonth() + 1;
+      selYear = new Date().getFullYear();
+    }
     const selTime = selYear * 12 + selMonth;
 
     // Group by contract_id
     const grouped = new Map<string, any>();
 
     // 1. Initialize grouped with all contracts active in the period
+    //    (skip for time range — chỉ hiện contract có payment trong khoảng)
+    if (usePeriod) {
     (data.contracts_all || []).forEach((c: any) => {
       let include = false;
       
@@ -153,11 +176,11 @@ export function ReportsTab({ data, loading }: Props) {
           electric_old: c.start_electric || 0,
           electric_new: 0,
           electric_usage: 0,
-          stayed_days: 0,
           notes: []
         });
       }
     });
+    }
 
     // 2. Process payments for the selected month
     targetPayments.forEach(p => {
@@ -177,7 +200,6 @@ export function ReportsTab({ data, loading }: Props) {
           electric_old: p.old_electric || (contract ? contract.start_electric : 0) || 0,
           electric_new: 0,
           electric_usage: 0,
-          stayed_days: 0,
           notes: []
         });
       }
@@ -218,10 +240,6 @@ export function ReportsTab({ data, loading }: Props) {
         group.electric_usage = p.electric_usage || group.electric_usage;
       }
 
-      if (p.stayed_days !== undefined) {
-          group.stayed_days = Number(p.stayed_days) || 0;
-      }
-
       const typeStr = String(p.payment_type || '').toLowerCase();
       if (typeStr.includes('cọc')) {
         if (!group.notes.includes('Tiền cọc')) {
@@ -242,49 +260,19 @@ export function ReportsTab({ data, loading }: Props) {
       const roomStr = String(roomId);
       const floor = roomStr ? roomStr.charAt(0) : '';
 
-      // Calculate days in month if missing
-      let stayedDays = group.stayed_days;
-      if (!stayedDays || stayedDays === 0) {
-        const parts = selectedPeriod.split('/');
-        const month = Number(parts[0]);
-        const year = Number(parts[1]);
-        const lastDay = new Date(year, month, 0).getDate();
-
-        let startDay = 1;
-        let endDay = lastDay;
-
-        if (contract.move_in_date) {
-          const miParts = contract.move_in_date.split('/'); // DD/MM/YYYY
-          if (miParts.length === 3 && Number(miParts[1]) === month && Number(miParts[2]) === year) {
-            startDay = Number(miParts[0]);
-          }
-        }
-
-        const archiveDateStr = contract.updated_at || contract.end_date || '';
-        if (archiveDateStr) {
-          let archDate: Date | null = null;
-          if (archiveDateStr.includes('T') || archiveDateStr.includes('-')) {
-            archDate = new Date(archiveDateStr);
-          } else if (archiveDateStr.includes('/')) {
-            const parts = archiveDateStr.split(' ')[0].split('/');
-            if (parts.length === 3) {
-              archDate = new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
-            }
-          }
-
-          if (archDate && !isNaN(archDate.getTime())) {
-            const archMonth = archDate.getMonth() + 1;
-            const archYear = archDate.getFullYear();
-            if (archMonth === month && archYear === year) {
-              endDay = archDate.getDate();
-            }
-          }
-        }
-
-        stayedDays = Math.max(0, endDay - startDay + 1);
-      }
+      // Determine payment bucket
+      // receiver === 'Chưa nhận' → có payment nhưng chưa thanh toán
+      // ngược lại: status === 'Hoàn thành' → đã tới chủ nhà, else → chưa tới chủ nhà
+      const paidPayments = group.payments.filter((p: any) => p.receiver && p.receiver !== 'Chưa nhận');
+      const hasCompleted = paidPayments.some((p: any) => p.status === 'Hoàn thành');
+      const hasPending = paidPayments.some((p: any) => p.status !== 'Hoàn thành');
+      const bucket = hasCompleted ? 'completed' : hasPending ? 'pending_landlord' : 'unpaid';
 
       const noteStr = [contract.note, ...group.notes].filter(Boolean).join('; ');
+
+      const isDepositOnly = group.payments.length > 0 && group.payments.every(
+        (p: any) => String(p.payment_type || '').toLowerCase().includes('cọc')
+      );
 
       return {
         stt: index + 1,
@@ -293,9 +281,9 @@ export function ReportsTab({ data, loading }: Props) {
         floor: floor,
         room_id: roomId,
         duration: contract.duration || '',
-        stayed_days: stayedDays,
+        bucket,
+        isDepositOnly,
         rent: safeParseNumber(contract.rent) + safeParseNumber(contract.extra_person_fee),
-        base_rent: group.base_rent,
         water_total: group.water_total,
         surcharge_total: group.surcharge_total,
         electric_total: group.electric_total,
@@ -303,7 +291,6 @@ export function ReportsTab({ data, loading }: Props) {
         electric_new: group.electric_new,
         electric_usage: group.electric_usage,
         total_revenue: group.total_revenue,
-        net_revenue: group.total_revenue - group.deposit_collected,
         note: noteStr
       };
     });
@@ -317,7 +304,7 @@ export function ReportsTab({ data, loading }: Props) {
     // Recalculate STT
     return rows.map((r, i) => ({ ...r, stt: i + 1 }));
 
-  }, [data, selectedPeriod, fromDatetime, toDatetime]);
+  }, [data, selectedPeriod, timeRangeId, fromDatetime, toDatetime]);
   const filteredReportData = useMemo(() => {
     if (!searchTerm) return reportData;
     const lower = searchTerm.toLowerCase();
@@ -327,14 +314,13 @@ export function ReportsTab({ data, loading }: Props) {
     );
   }, [reportData, searchTerm]);
 
-  const grandNetRevenue = filteredReportData.reduce((sum, row) => sum + row.net_revenue, 0);
-  const grandBaseRent = filteredReportData.reduce((sum, row) => sum + row.base_rent, 0);
+  const grandTotalRevenue = filteredReportData.reduce((sum, row) => sum + row.total_revenue, 0);
   const grandWater = filteredReportData.reduce((sum, row) => sum + row.water_total, 0);
   const grandSurcharge = filteredReportData.reduce((sum, row) => sum + row.surcharge_total, 0);
   const grandElectricUsage = filteredReportData.reduce((sum, row) => sum + row.electric_usage, 0);
   const grandElectric = filteredReportData.reduce((sum, row) => sum + row.electric_total, 0);
 
-  const periodLabel = selectedPeriod ? ` cho kỳ ${selectedPeriod}` : fromDatetime || toDatetime ? ` trong mốc thời gian đã chọn` : '';
+  const periodLabel = selectedPeriod ? ` cho kỳ ${selectedPeriod}` : timeRangeId > 0 && fromDatetime ? ' trong mốc thời gian đã chọn' : '';
 
   const periodExpenses = useMemo(() => {
     if (!data?.expenses || !selectedPeriod) return [];
@@ -348,30 +334,29 @@ export function ReportsTab({ data, loading }: Props) {
 
   const handleExportCSV = () => {
     const headers = [
-      'STT', 'Ngày ký HĐ', 'Tầng', 'Phòng', 'TG thuê (Tháng)', 'Số ngày ở',
-      'Giá cho thuê (VND)', 'Giá TT thực tế (i) (VND)', 'Nước (k) (VND)', 'Phí DV (l) (VND)',
+      'STT', 'Ngày ký HĐ', 'Tầng', 'Phòng', 'TG thuê (Tháng)',
+      'Giá cho thuê (VND)', 'Nước (k) (VND)', 'Phí DV (l) (VND)',
       'CSĐ đầu', 'CSĐ cuối', 'Tổng số điện', 'Điện (m) (VND)',
-      'Tổng cộng (ii) (VND)'
+      'Thành tiền (VND)'
     ];
 
     const rows = filteredReportData.map(r => [
-      r.stt, r.move_in_date, r.floor, r.room_id, r.duration, r.stayed_days,
-      r.rent, r.base_rent, r.water_total, r.surcharge_total,
+      r.stt, r.move_in_date, r.floor, r.room_id, r.duration,
+      r.rent, r.water_total, r.surcharge_total,
       r.electric_old, r.electric_new, r.electric_usage, r.electric_total,
-      r.net_revenue
+      r.total_revenue
     ]);
 
     // Add Column Totals row
     rows.push([
-      'TỔNG CỘNG', '', '', '', '', '',
+      'TỔNG CỘNG', '', '', '', '',
       '',
-      grandBaseRent,
       grandWater,
       grandSurcharge,
       '', '',
       grandElectricUsage,
       grandElectric,
-      grandNetRevenue
+      grandTotalRevenue
     ]);
 
 
@@ -381,7 +366,7 @@ export function ReportsTab({ data, loading }: Props) {
       'Tòa nhà Căn hộ Dịch vụ & Cho thuê',
       '',
       'BÁO CÁO KINH DOANH',
-      `Kỳ thanh toán: ${selectedPeriod}`,
+      selectedPeriod ? `Kỳ thanh toán: ${selectedPeriod}` : (fromDatetime ? `Từ: ${new Date(fromDatetime).toLocaleString('vi-VN')} → Đến: ${toDatetime ? new Date(toDatetime).toLocaleString('vi-VN') : 'Hiện tại'}` : ''),
       ''
     ].map(line => `"${line}"`);
 
@@ -449,8 +434,8 @@ export function ReportsTab({ data, loading }: Props) {
         <div className="flex flex-wrap items-center gap-3">
           <select id="select-report-period" name="period"
             value={selectedPeriod}
-            onChange={e => setSelectedPeriod(e.target.value)}
-            className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-700 focus:ring-2 focus:ring-indigo-400 focus:outline-none appearance-none cursor-pointer"
+            onChange={e => { setSelectedPeriod(e.target.value); setTimeRangeId(0); }}
+            className={`px-4 py-2 border rounded-xl text-sm font-medium focus:ring-2 focus:ring-indigo-400 focus:outline-none appearance-none cursor-pointer ${fromDatetime ? 'opacity-50' : 'bg-white border-slate-200 text-slate-700'}`}
           >
             <option value="">-- Chọn Kỳ --</option>
             {availablePeriods.map(p => (
@@ -458,15 +443,33 @@ export function ReportsTab({ data, loading }: Props) {
             ))}
           </select>
           <div className="flex items-center gap-2 text-sm text-slate-500">
-            <span className="font-medium whitespace-nowrap">Mốc TG:</span>
-            <input type="datetime-local" value={fromDatetime} onChange={e => setFromDatetime(e.target.value)}
+            <span className="font-medium whitespace-nowrap">Từ:</span>
+            <input type="datetime-local" value={fromDatetime}
+              onChange={e => { setFromDatetime(e.target.value); setSelectedPeriod(''); setTimeRangeId(0); setShowToCustom(false); }}
               className="px-2 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
-            <span>→</span>
-            <input type="datetime-local" value={toDatetime} onChange={e => setToDatetime(e.target.value)}
-              className="px-2 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
-            {(fromDatetime || toDatetime) && (
-              <button onClick={() => { setFromDatetime(''); setToDatetime(''); }}
-                className="text-xs text-red-500 hover:text-red-700 font-medium ml-1">Xoá</button>
+            <span className="font-medium">Đến:</span>
+            {showToCustom ? (
+              <input type="datetime-local" value={toDatetime}
+                onChange={e => setToDatetime(e.target.value)}
+                className="px-2 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
+            ) : (
+              <span className="text-slate-700 font-medium px-2">Hiện tại</span>
+            )}
+            <button onClick={() => setShowToCustom(!showToCustom)}
+              className="text-xs text-indigo-600 hover:text-indigo-800 font-medium px-2 py-1 border border-indigo-200 rounded-lg hover:bg-indigo-50">
+              {showToCustom ? 'Mặc định' : 'Chọn'}
+            </button>
+            {fromDatetime && (
+              <button onClick={() => {
+                setFromDatetime(''); setToDatetime(''); setTimeRangeId(0); setShowToCustom(false);
+              }}
+                className="text-xs text-red-500 hover:text-red-700 font-medium">Xoá</button>
+            )}
+            {fromDatetime && (
+              <button onClick={() => setTimeRangeId(prev => prev + 1)}
+                className="inline-flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-xl text-xs font-medium transition-colors shadow-sm">
+                ▶ Xuất báo cáo
+              </button>
             )}
           </div>
           <div className="relative">
@@ -501,103 +504,103 @@ export function ReportsTab({ data, loading }: Props) {
           </div>
           <div className="text-center pt-8">
             <h1 className="text-2xl font-bold uppercase">Báo Cáo Kinh Doanh</h1>
-            <p className="text-lg mt-2">Kỳ thanh toán: {selectedPeriod}{fromDatetime ? ` • Từ: ${new Date(fromDatetime).toLocaleString('vi-VN')}` : ''}{toDatetime ? ` • Đến: ${new Date(toDatetime).toLocaleString('vi-VN')}` : ''}</p>
+            <p className="text-lg mt-2">{selectedPeriod ? `Kỳ thanh toán: ${selectedPeriod}` : fromDatetime ? `Từ: ${new Date(fromDatetime).toLocaleString('vi-VN')}  →  Đến: ${toDatetime ? new Date(toDatetime).toLocaleString('vi-VN') : 'Hiện tại'}` : ''}</p>
           </div>
         </div>
-        <div className="overflow-x-auto print:overflow-visible">
-          <table className="w-full print:w-full text-left text-sm border-separate border-spacing-0 print:border-collapse print:text-[11px]">
-            <thead className="bg-slate-50 text-slate-600 print:bg-white print:text-black">
-              <tr>
-                <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black whitespace-nowrap text-center">STT</th>
-                <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black whitespace-nowrap print:hidden">Ngày ký HĐ</th>
-                <th className="px-2 py-3 font-semibold border-b border-slate-200 print:border-black text-center print:hidden">Tầng</th>
-                <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black">Phòng</th>
-                <th className="px-2 py-3 font-semibold border-b border-slate-200 print:border-black text-center whitespace-nowrap">Thời gian<br/><span className="text-[10px] font-normal">(tháng)</span></th>
-                <th className="px-2 py-3 font-semibold border-b border-slate-200 print:border-black text-center whitespace-nowrap">Số ngày ở</th>
-                <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black text-right">Giá cho thuê (VND)</th>
-                <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black text-right whitespace-nowrap">Thực tế (i) (VND)</th>
-                <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black text-right whitespace-nowrap">Nước (k) (VND)</th>
-                <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black text-right whitespace-nowrap">Phí DV (l) (VND)</th>
-                
-                {/* Điện (m) có 3 cột nhỏ: CSĐ đầu, CSĐ cuối, Tổng số điện, Điện */}
-                <th className="px-2 py-3 font-semibold border-b border-slate-200 print:border-black text-right text-[10px]">CSĐ đầu</th>
-                <th className="px-2 py-3 font-semibold border-b border-slate-200 print:border-black text-right text-[10px]">CSĐ cuối</th>
-                <th className="px-2 py-3 font-semibold border-b border-slate-200 print:border-black text-right text-[10px]">Tiêu thụ</th>
-                <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black text-right whitespace-nowrap">Điện (m) (VND)</th>
+        {/* ── 3 Tables by payment status ── */}
+        {reportData.length > 0 ? (
+          [
+            { key: 'completed' as const, label: 'Đã thanh toán (đã tới chủ nhà)' },
+            { key: 'pending_landlord' as const, label: 'Đã thanh toán (Chưa tới chủ nhà)' },
+            { key: 'unpaid' as const, label: 'Chưa thanh toán' },
+          ].map(({ key, label }) => {
+            const bucketData = filteredReportData.filter(r => r.bucket === key);
+            if (bucketData.length === 0) return null;
 
-                <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black text-right whitespace-nowrap text-indigo-700 print:text-black">Tổng cộng (ii) (VND)</th>
-                <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black min-w-[150px]">Ghi chú</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 print:divide-black">
-              {filteredReportData.map((r, idx) => (
-                <motion.tr key={r.contract_id + idx} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="hover:bg-slate-50/50">
-                  <td className="px-3 py-2 text-center text-slate-500 print:border-b print:border-slate-300">{r.stt}</td>
-                  <td className="px-3 py-2 whitespace-nowrap print:border-b print:border-slate-300 print:hidden">{r.move_in_date}</td>
-                  <td className="px-2 py-2 text-center font-medium text-slate-500 print:border-b print:border-slate-300 print:hidden">{r.floor}</td>
-                  <td className="px-3 py-2 font-bold text-slate-800 print:border-b print:border-slate-300">{r.room_id}</td>
-                  <td className="px-2 py-2 text-center text-slate-600 print:border-b print:border-slate-300">{r.duration}</td>
-                  <td className="px-2 py-2 text-center text-slate-600 print:border-b print:border-slate-300">{r.stayed_days}</td>
-                  <td className="px-3 py-2 text-right text-slate-600 print:border-b print:border-slate-300">{formatVND(r.rent)}</td>
-                  <td className="px-3 py-2 text-right font-medium text-emerald-600 print:border-b print:border-slate-300 print:text-black">{formatVND(r.base_rent)}</td>
-                  <td className="px-3 py-2 text-right text-blue-600 print:border-b print:border-slate-300 print:text-black">{formatVND(r.water_total)}</td>
-                  <td className="px-3 py-2 text-right text-amber-600 print:border-b print:border-slate-300 print:text-black">{formatVND(r.surcharge_total)}</td>
-                  <td className="px-2 py-2 text-right text-slate-500 text-xs print:border-b print:border-slate-300">{r.electric_old}</td>
-                  <td className="px-2 py-2 text-right text-slate-500 text-xs print:border-b print:border-slate-300">{r.electric_new}</td>
-                  <td className="px-2 py-2 text-right text-slate-700 font-medium text-xs print:border-b print:border-slate-300">{r.electric_usage}</td>
-                  <td className="px-3 py-2 text-right text-rose-600 print:border-b print:border-slate-300 print:text-black">{formatVND(r.electric_total)}</td>
-                  <td className="px-3 py-2 text-right font-bold text-indigo-600 print:border-b print:border-slate-300 print:text-black">{formatVND(r.net_revenue)}</td>
-                  <td className="px-3 py-2 text-xs text-slate-500 max-w-[200px] truncate print:whitespace-normal print:border-b print:border-slate-300" title={r.note}>{r.note || '—'}</td>
-                </motion.tr>
-              ))}
-              {filteredReportData.length === 0 && (
-                <tr>
-                  <td colSpan={16} className="px-4 py-8 text-center text-slate-400 print:hidden">
-                    {periodLabel ? `Không có dữ liệu${periodLabel}` : 'Chọn Kỳ hoặc mốc thời gian để xem báo cáo kinh doanh'}
-                  </td>
-                  <td colSpan={14} className="px-4 py-8 text-center text-slate-400 hidden print:table-cell print:border-b print:border-slate-300">
-                    {periodLabel ? `Không có dữ liệu${periodLabel}` : 'Chọn Kỳ hoặc mốc thời gian để xem báo cáo kinh doanh'}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-            <tbody className="bg-slate-50 font-bold text-slate-800 print:bg-white print:border-t-2 print:border-black">
-              {/* Detailed Column Totals Row */}
-              <tr className="border-t border-slate-200 print:border-black bg-slate-100/50 print:bg-white text-[11px] print:text-[10px]">
-                <td colSpan={6} className="px-3 py-3 text-right uppercase font-bold text-slate-600 print:hidden">
-                  TỔNG CỘNG
-                </td>
-                <td colSpan={4} className="px-3 py-3 text-right uppercase font-bold text-slate-600 hidden print:table-cell">
-                  TỔNG CỘNG
-                </td>
-                <td className="px-3 py-3 text-right text-slate-400 font-semibold whitespace-nowrap">
-                  —
-                </td>
-                <td className="px-3 py-3 text-right font-bold text-emerald-700 print:text-black whitespace-nowrap">
-                  {formatVND(grandBaseRent)}
-                </td>
-                <td className="px-3 py-3 text-right font-bold text-blue-600 print:text-black whitespace-nowrap">
-                  {formatVND(grandWater)}
-                </td>
-                <td className="px-3 py-3 text-right font-bold text-amber-600 print:text-black whitespace-nowrap">
-                  {formatVND(grandSurcharge)}
-                </td>
-                <td className="px-2 py-3 text-right text-slate-400 font-semibold">—</td>
-                <td className="px-2 py-3 text-right text-slate-400 font-semibold">—</td>
-                <td className="px-2 py-3 text-right font-bold text-slate-700 print:text-black whitespace-nowrap">
-                  {grandElectricUsage}
-                </td>
-                <td className="px-3 py-3 text-right font-bold text-rose-600 print:text-black whitespace-nowrap">
-                  {formatVND(grandElectric)}
-                </td>
-                <td className="px-3 py-3 text-right font-black text-indigo-700 print:text-black whitespace-nowrap">
-                  {formatVND(grandNetRevenue)}
-                </td>
-                <td></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+            const tTotalRevenue = bucketData.reduce((s, r) => s + r.total_revenue, 0);
+            const tWater = bucketData.reduce((s, r) => s + r.water_total, 0);
+            const tSurcharge = bucketData.reduce((s, r) => s + r.surcharge_total, 0);
+            const tElectricUsage = bucketData.reduce((s, r) => s + r.electric_usage, 0);
+            const tElectric = bucketData.reduce((s, r) => s + r.electric_total, 0);
+
+            const headerClass = key === 'completed' ? 'text-emerald-700'
+              : key === 'pending_landlord' ? 'text-amber-700'
+              : 'text-red-700';
+
+            return (
+              <div key={key} className="mb-8 last:mb-0">
+                <h3 className={`text-base font-bold px-4 pt-4 pb-2 ${headerClass} print:text-black`}>
+                  {label}
+                </h3>
+                <div className="overflow-x-auto print:overflow-visible">
+                  <table className="w-full print:w-full text-left text-sm border-separate border-spacing-0 print:border-collapse print:text-[11px]">
+                    <thead className="bg-slate-50 text-slate-600 print:bg-white print:text-black">
+                      <tr>
+                        <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black whitespace-nowrap text-center">STT</th>
+                        <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black whitespace-nowrap print:hidden">Ngày ký HĐ</th>
+                        <th className="px-2 py-3 font-semibold border-b border-slate-200 print:border-black text-center print:hidden">Tầng</th>
+                        <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black">Phòng</th>
+                        <th className="px-2 py-3 font-semibold border-b border-slate-200 print:border-black text-center whitespace-nowrap">Thời hạn<br/><span className="text-[10px] font-normal">(tháng)</span></th>
+                        <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black text-right">Giá cho thuê (VND)</th>
+                        <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black text-right whitespace-nowrap">Nước (k) (VND)</th>
+                        <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black text-right whitespace-nowrap">Phí DV (l) (VND)</th>
+                        <th className="px-2 py-3 font-semibold border-b border-slate-200 print:border-black text-right text-[10px]">CSĐ đầu</th>
+                        <th className="px-2 py-3 font-semibold border-b border-slate-200 print:border-black text-right text-[10px]">CSĐ cuối</th>
+                        <th className="px-2 py-3 font-semibold border-b border-slate-200 print:border-black text-right text-[10px]">Tiêu thụ</th>
+                        <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black text-right whitespace-nowrap">Điện (m) (VND)</th>
+                        <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black text-right whitespace-nowrap text-indigo-700 print:text-black">Thành tiền (VND)</th>
+                        <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black min-w-[150px]">Ghi chú</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 print:divide-black">
+                      {bucketData.map((r, idx) => (
+                        <motion.tr key={r.contract_id + idx} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="hover:bg-slate-50/50">
+                          <td className="px-3 py-2 text-center text-slate-500 print:border-b print:border-slate-300">{idx + 1}</td>
+                          <td className="px-3 py-2 whitespace-nowrap print:border-b print:border-slate-300 print:hidden">{r.move_in_date}</td>
+                          <td className="px-2 py-2 text-center font-medium text-slate-500 print:border-b print:border-slate-300 print:hidden">{r.floor}</td>
+                          <td className="px-3 py-2 font-bold text-slate-800 print:border-b print:border-slate-300">{r.room_id}</td>
+                          <td className="px-2 py-2 text-center text-slate-600 print:border-b print:border-slate-300">{r.duration}</td>
+                          <td className="px-3 py-2 text-right text-slate-600 print:border-b print:border-slate-300">{r.isDepositOnly ? '—' : formatVND(r.rent)}</td>
+                          <td className="px-3 py-2 text-right text-blue-600 print:border-b print:border-slate-300 print:text-black">{r.isDepositOnly ? '—' : formatVND(r.water_total)}</td>
+                          <td className="px-3 py-2 text-right text-amber-600 print:border-b print:border-slate-300 print:text-black">{r.isDepositOnly ? '—' : formatVND(r.surcharge_total)}</td>
+                          <td className="px-2 py-2 text-right text-slate-500 text-xs print:border-b print:border-slate-300">{r.isDepositOnly ? '—' : r.electric_old}</td>
+                          <td className="px-2 py-2 text-right text-slate-500 text-xs print:border-b print:border-slate-300">{r.isDepositOnly ? '—' : r.electric_new}</td>
+                          <td className="px-2 py-2 text-right text-slate-700 font-medium text-xs print:border-b print:border-slate-300">{r.isDepositOnly ? '—' : r.electric_usage}</td>
+                          <td className="px-3 py-2 text-right text-rose-600 print:border-b print:border-slate-300 print:text-black">{r.isDepositOnly ? '—' : formatVND(r.electric_total)}</td>
+                          <td className="px-3 py-2 text-right font-bold text-indigo-600 print:border-b print:border-slate-300 print:text-black">{formatVND(r.total_revenue)}</td>
+                          <td className="px-3 py-2 text-xs text-slate-500 max-w-[200px] truncate print:whitespace-normal print:border-b print:border-slate-300" title={r.note}>{r.note || '—'}</td>
+                        </motion.tr>
+                      ))}
+                    </tbody>
+                    <tbody className="bg-slate-50 font-bold text-slate-800 print:bg-white print:border-t-2 print:border-black">
+                      <tr className="border-t border-slate-200 print:border-black bg-slate-100/50 print:bg-white text-[11px] print:text-[10px]">
+                        <td colSpan={5} className="px-3 py-3 text-right uppercase font-bold text-slate-600 print:hidden">
+                          TỔNG CỘNG
+                        </td>
+                        <td colSpan={3} className="px-3 py-3 text-right uppercase font-bold text-slate-600 hidden print:table-cell">
+                          TỔNG CỘNG
+                        </td>
+                        <td className="px-3 py-3 text-right text-slate-400 font-semibold whitespace-nowrap">—</td>
+                        <td className="px-3 py-3 text-right font-bold text-blue-600 print:text-black whitespace-nowrap">{formatVND(tWater)}</td>
+                        <td className="px-3 py-3 text-right font-bold text-amber-600 print:text-black whitespace-nowrap">{formatVND(tSurcharge)}</td>
+                        <td className="px-2 py-3 text-right text-slate-400 font-semibold">—</td>
+                        <td className="px-2 py-3 text-right text-slate-400 font-semibold">—</td>
+                        <td className="px-2 py-3 text-right font-bold text-slate-700 print:text-black whitespace-nowrap">{tElectricUsage}</td>
+                        <td className="px-3 py-3 text-right font-bold text-rose-600 print:text-black whitespace-nowrap">{formatVND(tElectric)}</td>
+                        <td className="px-3 py-3 text-right font-black text-indigo-700 print:text-black whitespace-nowrap">{formatVND(tTotalRevenue)}</td>
+                        <td></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })
+        ) : (
+          <div className="p-8 text-center text-slate-400">
+            {periodLabel ? `Không có dữ liệu${periodLabel}` : 'Chọn Kỳ hoặc mốc thời gian để xem báo cáo kinh doanh'}
+          </div>
+        )}
       </div>
 
       {/* ── Expense Report Table (Page 2 when printing) ── */}

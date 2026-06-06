@@ -32,6 +32,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
   const [exportingId, setExportingId] = useState<string | null>(null);
   const [pdfExportItem, setPdfExportItem] = useState<any>(null);
   const [pdfDebtOverride, setPdfDebtOverride] = useState(0);
+  const [pdfDueDate, setPdfDueDate] = useState('');
   const pdfOriginalDebtRef = useRef(0);
   const [completeItem, setCompleteItem] = useState<any>(null);
   const [completeReceiver, setCompleteReceiver] = useState('');
@@ -245,6 +246,13 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
     const orig = Number(payment.previous_debt) || Number(payment['nợ kỳ trước']) || 0;
     setPdfDebtOverride(orig);
     pdfOriginalDebtRef.current = orig;
+    // Pre-fill due_date = hôm nay + 5 ngày (DD/MM/YYYY)
+    const d = new Date();
+    d.setDate(d.getDate() + 5);
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    setPdfDueDate(`${dd}/${mm}/${yyyy}`);
   };
 
   const handlePdfExportConfirm = async () => {
@@ -255,7 +263,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
     try {
       const changed = pdfDebtOverride !== pdfOriginalDebtRef.current;
       if (changed) await API.updatePayment(config, id, { previous_debt: pdfDebtOverride });
-      const res = await API.getReceiptPdf(config, id);
+      const res = await API.getReceiptPdf(config, id, pdfDueDate || undefined);
       downloadBase64Pdf(res.base64, res.filename);
       if (changed) onRefresh();
     } catch (e: any) {
@@ -661,6 +669,15 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
                 placeholder="0"
               />
               <p className="text-[11px] text-slate-400 mt-1.5">Giá trị này sẽ được lưu và sử dụng trong PDF. Có thể để trống nếu không có nợ.</p>
+            </div>
+            <div className="border-t border-slate-100 pt-3">
+              <label className="block text-sm font-bold text-indigo-700 mb-1">Ngày đến hạn</label>
+              <div className="flex items-center gap-2">
+                <div className="flex-1">
+                  <DatePickerInput value={pdfDueDate} onChange={setPdfDueDate} />
+                </div>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1.5">Chọn ngày đến hạn hiển thị trên PDF. Mặc định: hôm nay + 5 ngày.</p>
             </div>
             <div className="flex gap-3 pt-1">
               <button onClick={() => setPdfExportItem(null)}

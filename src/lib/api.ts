@@ -131,8 +131,11 @@ export const API = {
     const url = `/api/pdf/sub-contract/${contractId}` + (tenantId ? `?tenant_id=${tenantId}` : '');
     return fetchApi<{ base64: string; filename: string }>(config, url);
   },
-  getReceiptPdf: (config: AppConfig, paymentId: string) =>
-    fetchApi<{ base64: string; filename: string }>(config, `/api/pdf/receipt/${paymentId}`),
+  getReceiptPdf: (config: AppConfig, paymentId: string, dueDate?: string) => {
+    let url = `/api/pdf/receipt/${paymentId}`;
+    if (dueDate) url += `?due_date=${encodeURIComponent(dueDate)}`;
+    return fetchApi<{ base64: string; filename: string }>(config, url);
+  },
   getTerminationPdf: (config: AppConfig, contractId: string, options?: {
     final_electric_reading?: string | number;
     electric_consumption?: string | number;
