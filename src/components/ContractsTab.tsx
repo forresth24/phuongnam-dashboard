@@ -88,6 +88,16 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
   const [subContractActiveContract, setSubContractActiveContract] = useState<any>(null);
   const [selectedTenants, setSelectedTenants] = useState<string[]>([]);
 
+  // Sign date modal state
+  const [signDateModal, setSignDateModal] = useState<{
+    type: 'contract' | 'sub_contract';
+    contractId?: string;
+    subContractTenants?: string[];
+  } | null>(null);
+  const [signDateOption, setSignDateOption] = useState<'today' | 'custom' | 'blank'>('today');
+  const [signDateCustom, setSignDateCustom] = useState('');
+  const [signDateConfirming, setSignDateConfirming] = useState(false);
+
   if (loading) return <div className="flex h-64 items-center justify-center"><Loader2 className="animate-spin text-indigo-500" size={32} /></div>;
   if (!data) return null;
 
@@ -315,19 +325,6 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
     setActing(false);
   };
 
-  const handlePdf = async (contractId: string, type: 'contract' | 'payment' | 'sub_contract') => {
-    setPdfLoading(`${type}_${contractId}`);
-    try {
-      let res;
-      if (type === 'contract') res = await API.getContractPdf(config, contractId);
-      else if (type === 'payment') res = await API.getPaymentPdf(config, contractId);
-      else if (type === 'sub_contract') res = await API.getSubContractPdf(config, contractId);
-      
-      if (res) downloadBase64Pdf(res.base64, res.filename);
-    } catch (e: any) { alert('Lỗi tạo PDF: ' + e.message); }
-    setPdfLoading(null);
-  };
-
   const handleTerminationPdf = async (contract: any) => {
     setPdfLoading(`termination_${contract.id}`);
     try {
@@ -389,12 +386,22 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
 
   const handleExportSubContracts = async () => {
     if (!subContractActiveContract || selectedTenants.length === 0) return;
-    
+    // Show sign date modal before proceeding
+    setSignDateOption('today');
+    setSignDateCustom('');
+    setSignDateConfirming(false);
+    setSignDateModal({ type: 'sub_contract', contractId: subContractActiveContract.id });
+  };
+
+  const doExportSubContracts = async (signDate?: string) => {
+    if (!subContractActiveContract || selectedTenants.length === 0) return;
+
     setPdfLoading(`sub_contract_${subContractActiveContract.id}`);
-    
+    setSignDateConfirming(true);
+
     try {
       const roomTenants = data.tenants.filter((t: any) => String(t.room_id).trim() === String(subContractActiveContract.room_id).trim());
-      
+
       const items = roomTenants.length > 0 ? roomTenants : [
         {
           id: 'representative',
@@ -407,14 +414,14 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
       for (const tenantId of selectedTenants) {
         const t = items.find((item: any) => item.id === tenantId);
         const tName = t ? t.name : subContractActiveContract.tenant;
-        
+
         let res;
         if (tenantId === 'representative') {
-          res = await API.getSubContractPdf(config, subContractActiveContract.id);
+          res = await API.getSubContractPdf(config, subContractActiveContract.id, undefined, signDate);
         } else {
-          res = await API.getSubContractPdf(config, subContractActiveContract.id, tenantId);
+          res = await API.getSubContractPdf(config, subContractActiveContract.id, tenantId, signDate);
         }
-        
+
         if (res) {
           const cleanName = tName ? tName.trim().replace(/\s+/g, '_') : 'ThanhVien';
           const filename = `HopDongPhu_${subContractActiveContract.room_id}_${cleanName}.pdf`;
@@ -425,8 +432,38 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
     } catch (e: any) {
       alert('Lỗi tạo PDF HĐ Phụ: ' + e.message);
     }
-    
+
     setPdfLoading(null);
+    setSignDateModal(null);
+    setSignDateConfirming(false);
+  };
+
+  const doGenerateContractPdf = async (signDate?: string) => {
+    if (!signDateModal?.contractId) return;
+    setPdfLoading(`contract_${signDateModal.contractId}`);
+    setSignDateConfirming(true);
+    try {
+      const res = await API.getContractPdf(config, signDateModal.contractId, signDate);
+      if (res) downloadBase64Pdf(res.base64, res.filename);
+    } catch (e: any) { alert('Lỗi tạo PDF: ' + e.message); }
+    setPdfLoading(null);
+    setSignDateModal(null);
+    setSignDateConfirming(false);
+  };
+
+  const handlePdfSignDateConfirm = async () => {
+    if (!signDateModal) return;
+    let signDate: string | undefined;
+    if (signDateOption === 'custom' && signDateCustom) {
+      signDate = signDateCustom; // YYYY-MM-DD from input type="date"
+    } else if (signDateOption === 'blank') {
+      signDate = 'blank';
+    }
+    if (signDateModal.type === 'contract') {
+      await doGenerateContractPdf(signDate);
+    } else if (signDateModal.type === 'sub_contract') {
+      await doExportSubContracts(signDate);
+    }
   };
 
   const F = (k: string, v: any) => {
@@ -486,7 +523,7 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
                   <td className="px-4 py-3"><Badge variant={c.status === 'active' ? 'success' : 'neutral'}>{c.status === 'active' ? 'Đang hoạt động' : 'Đã kết thúc'}</Badge></td>
                     <td className="px-4 py-3">
                       <div className="flex gap-1">
-                        <button onClick={() => handlePdf(c.id, 'contract')} disabled={pdfLoading === `contract_${c.id}`}
+                        <button onClick={() => { setSignDateOption('today'); setSignDateCustom(''); setSignDateModal({ type: 'contract', contractId: c.id }); }} disabled={pdfLoading === `contract_${c.id}`}
                           title="Xuất PDF Hợp đồng" className="p-1.5 rounded-lg hover:bg-blue-50 text-slate-400 hover:text-blue-600 disabled:opacity-50">
                           {pdfLoading === `contract_${c.id}` ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} />}
                         </button>
@@ -955,6 +992,57 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
             >
               {pdfLoading !== null && <Loader2 size={16} className="animate-spin" />}
               Xuất PDF ({selectedTenants.length} bản)
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Sign Date Modal */}
+      <Modal
+        open={signDateModal !== null}
+        onClose={() => { if (!signDateConfirming) setSignDateModal(null); }}
+        title="Chọn Ngày Ký"
+        maxWidth="max-w-sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-slate-500">Chọn ngày ký cho hợp đồng:</p>
+
+          <label className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${signDateOption === 'today' ? 'border-indigo-400 bg-indigo-50' : 'border-slate-200 hover:bg-slate-50'}`}>
+            <input type="radio" name="signDate" value="today" checked={signDateOption === 'today'} onChange={() => setSignDateOption('today')} className="mt-0.5 accent-indigo-600" />
+            <div>
+              <p className="text-sm font-medium text-slate-800">Ngày hiện tại</p>
+              <p className="text-xs text-slate-400">Lấy ngày {new Date().getDate()} tháng {new Date().getMonth() + 1} năm {new Date().getFullYear()}</p>
+            </div>
+          </label>
+
+          <label className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${signDateOption === 'custom' ? 'border-indigo-400 bg-indigo-50' : 'border-slate-200 hover:bg-slate-50'}`}>
+            <input type="radio" name="signDate" value="custom" checked={signDateOption === 'custom'} onChange={() => setSignDateOption('custom')} className="mt-0.5 accent-indigo-600" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-slate-800">Chọn ngày bất kỳ</p>
+              {signDateOption === 'custom' && (
+                <input type="date" value={signDateCustom} onChange={(e) => setSignDateCustom(e.target.value)}
+                  className="mt-2 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
+              )}
+            </div>
+          </label>
+
+          <label className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${signDateOption === 'blank' ? 'border-indigo-400 bg-indigo-50' : 'border-slate-200 hover:bg-slate-50'}`}>
+            <input type="radio" name="signDate" value="blank" checked={signDateOption === 'blank'} onChange={() => setSignDateOption('blank')} className="mt-0.5 accent-indigo-600" />
+            <div>
+              <p className="text-sm font-medium text-slate-800">Để trống</p>
+              <p className="text-xs text-slate-400">Ngày ký sẽ hiển thị "........"</p>
+            </div>
+          </label>
+
+          <div className="flex gap-3 pt-2">
+            <button onClick={() => setSignDateModal(null)} disabled={signDateConfirming}
+              className="flex-1 border border-slate-200 hover:bg-slate-50 text-slate-700 py-2.5 rounded-xl font-medium transition-colors text-sm">
+              Hủy
+            </button>
+            <button onClick={handlePdfSignDateConfirm} disabled={signDateConfirming || (signDateOption === 'custom' && !signDateCustom)}
+              className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-xl font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2 text-sm shadow-sm shadow-indigo-100">
+              {signDateConfirming ? <Loader2 size={16} className="animate-spin" /> : null}
+              Xác nhận
             </button>
           </div>
         </div>

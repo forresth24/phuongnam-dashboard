@@ -123,13 +123,19 @@ export const API = {
     fetchApi<any>(config, `/api/payables/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
 
   // PDF generation
-  getContractPdf: (config: AppConfig, contractId: string) =>
-    fetchApi<{ base64: string; filename: string }>(config, `/api/pdf/contract/${contractId}`),
+  getContractPdf: (config: AppConfig, contractId: string, signDate?: string) => {
+    let url = `/api/pdf/contract/${contractId}`;
+    if (signDate) url += `?sign_date=${encodeURIComponent(signDate)}`;
+    return fetchApi<{ base64: string; filename: string }>(config, url);
+  },
   getPaymentPdf: (config: AppConfig, contractId: string) =>
     fetchApi<{ base64: string; filename: string }>(config, `/api/pdf/payment/${contractId}`),
-  getSubContractPdf: (config: AppConfig, contractId: string, tenantId?: string) => {
-    const url = `/api/pdf/sub-contract/${contractId}` + (tenantId ? `?tenant_id=${tenantId}` : '');
-    return fetchApi<{ base64: string; filename: string }>(config, url);
+  getSubContractPdf: (config: AppConfig, contractId: string, tenantId?: string, signDate?: string) => {
+    const params: string[] = [];
+    if (tenantId) params.push(`tenant_id=${encodeURIComponent(tenantId)}`);
+    if (signDate) params.push(`sign_date=${encodeURIComponent(signDate)}`);
+    const query = params.length > 0 ? '?' + params.join('&') : '';
+    return fetchApi<{ base64: string; filename: string }>(config, `/api/pdf/sub-contract/${contractId}${query}`);
   },
   getReceiptPdf: (config: AppConfig, paymentId: string, dueDate?: string) => {
     let url = `/api/pdf/receipt/${paymentId}`;
