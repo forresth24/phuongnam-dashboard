@@ -42,7 +42,8 @@ export function ReportsTab({ data, loading }: Props) {
 
   const [selectedPeriod, setSelectedPeriod] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
-  const [fromDatetime, setFromDatetime] = useState('');
+  const defaultFrom = `${currentYear}-01-01T00:00`;
+  const [fromDatetime, setFromDatetime] = useState(defaultFrom);
   const [toDatetime, setToDatetime] = useState('');
   const [showToCustom, setShowToCustom] = useState(false);
   const [timeRangeId, setTimeRangeId] = useState(0); // >0 = trigger time range report
@@ -74,9 +75,13 @@ export function ReportsTab({ data, loading }: Props) {
     for (const field of ['updated_at', 'completed_date', 'received_date', 'date']) {
       const v = p[field];
       if (!v) continue;
-      const d = new Date(v);
-      if (!isNaN(d.getTime())) return d;
-      // Try DD/MM/YYYY HH:mm:ss format
+      // ISO format (YYYY-MM-DD...) — parse directly
+      if (typeof v === 'string' && !v.includes('/')) {
+        const d = new Date(v);
+        if (!isNaN(d.getTime())) return d;
+        continue;
+      }
+      // Vietnamese DD/MM/YYYY HH:mm:ss — parse via regex (tránh nhầm MM/DD/YYYY)
       if (typeof v === 'string' && v.includes('/')) {
         const m = v.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
         if (m) {
@@ -222,7 +227,9 @@ export function ReportsTab({ data, loading }: Props) {
         }
         
         const typeStr = String(p.payment_type || '').toLowerCase();
-        if (deposit === 0 && typeStr.includes('cọc')) {
+        // Pure deposit: chứa 'cọc', không phải loại gộp (tháng + cọc)
+        const isPureDeposit = typeStr.includes('cọc') && !typeStr.includes('+') && !typeStr.includes('tháng');
+        if (deposit === 0 && isPureDeposit) {
             deposit = actualAmount;
         }
 
@@ -271,7 +278,11 @@ export function ReportsTab({ data, loading }: Props) {
       const noteStr = [contract.note, ...group.notes].filter(Boolean).join('; ');
 
       const isDepositOnly = group.payments.length > 0 && group.payments.every(
-        (p: any) => String(p.payment_type || '').toLowerCase().includes('cọc')
+        (p: any) => {
+          const pt = String(p.payment_type || '').toLowerCase();
+          // Pure deposit: chứa 'cọc' nhưng KHÔNG phải loại gộp (có dấu '+' hoặc 'tháng' + 'cọc')
+          return pt.includes('cọc') && !pt.includes('+') && !pt.includes('tháng');
+        }
       );
 
       return {
@@ -442,16 +453,24 @@ export function ReportsTab({ data, loading }: Props) {
               <option key={p} value={p}>Kỳ: {p}</option>
             ))}
           </select>
-          <div className="flex items-center gap-2 text-sm text-slate-500">
+          <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
             <span className="font-medium whitespace-nowrap">Từ:</span>
-            <input type="datetime-local" value={fromDatetime}
-              onChange={e => { setFromDatetime(e.target.value); setSelectedPeriod(''); setTimeRangeId(0); setShowToCustom(false); }}
-              className="px-2 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
+            <input type="date" value={fromDatetime.split('T')[0] || ''}
+              onChange={e => { setFromDatetime(e.target.value + 'T' + (fromDatetime.split('T')[1] || '00:00')); setSelectedPeriod(''); setTimeRangeId(0); setShowToCustom(false); }}
+              className="px-2 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none w-36" />
+            <input type="time" value={fromDatetime.split('T')[1] || ''}
+              onChange={e => { setFromDatetime((fromDatetime.split('T')[0] || '') + 'T' + e.target.value); }}
+              className="px-2 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none w-24" />
             <span className="font-medium">Đến:</span>
             {showToCustom ? (
-              <input type="datetime-local" value={toDatetime}
-                onChange={e => setToDatetime(e.target.value)}
-                className="px-2 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
+              <>
+                <input type="date" value={toDatetime.split('T')[0] || ''}
+                  onChange={e => setToDatetime(e.target.value + 'T' + (toDatetime.split('T')[1] || '23:59'))}
+                  className="px-2 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none w-36" />
+                <input type="time" value={toDatetime.split('T')[1] || ''}
+                  onChange={e => setToDatetime((toDatetime.split('T')[0] || '') + 'T' + e.target.value)}
+                  className="px-2 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none w-24" />
+              </>
             ) : (
               <span className="text-slate-700 font-medium px-2">Hiện tại</span>
             )}
