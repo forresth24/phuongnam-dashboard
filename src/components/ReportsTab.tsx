@@ -126,17 +126,32 @@ export function ReportsTab({ data, loading }: Props) {
       });
     }
 
-    // 2. Build room_id lookup from contracts
+    // 2. Build lookups
     const contractRoomMap = new Map<string, string>();
-    (data.contracts_all || []).forEach(c => contractRoomMap.set(c.id, c.room_id));
+    const contractRentMap = new Map<string, number>();
+    (data.contracts_all || []).forEach(c => {
+      contractRoomMap.set(c.id, c.room_id);
+      contractRentMap.set(c.id, safeParseNumber(c.rent) + safeParseNumber(c.extra_person_fee));
+    });
+    const tenantRoomMap = new Map<string, string>();
+    (data.tenants || []).forEach(t => {
+      if (!tenantRoomMap.has(t.room_id)) {
+        // Grab the given name (last word of Vietnamese name)
+        const nameParts = String(t.name || '').trim().split(/\s+/);
+        tenantRoomMap.set(t.room_id, nameParts[nameParts.length - 1] || '');
+      }
+    });
 
     // 3. Each payment → one row
     const rows = targetPayments.map(p => {
       const cid = p.contract_id || '';
+      const roomId = contractRoomMap.get(cid) || '';
       return {
         id: p.id || '',
         contract_id: cid,
-        room_id: contractRoomMap.get(cid) || '',
+        room_id: roomId,
+        tenant_name: tenantRoomMap.get(roomId) || '',
+        room_rent: contractRentMap.get(cid) || 0,
         payment_type: p.payment_type || '',
         date: getPaymentDisplayDate(p),
         bucket: classifyPayment(p),
@@ -186,21 +201,21 @@ export function ReportsTab({ data, loading }: Props) {
   // ── CSV Export ──
   const handleExportCSV = () => {
     const headers = [
-      'STT', 'Ngày TT', 'Phòng', 'Hợp đồng', 'Loại thanh toán',
-      'Nước (VND)', 'Phí DV (VND)', 'Điện (VND)', 'Thành tiền (VND)', 'Ghi chú',
+      'STT', 'Phòng', 'Hợp đồng', 'Tiền phòng (VND)',
+      'Nước (VND)', 'Phí DV (VND)', 'Điện (VND)', 'Thành tiền (VND)',
+      'Loại TT', 'Ngày TT', 'Ghi chú',
     ];
 
-    const csvRows = filteredReportData.map(r => [
-      r.stt, r.date, r.room_id, r.contract_id, r.payment_type,
-      r.water_total, r.surcharge_total, r.electric_total, r.amount, r.note,
-    ]);
+    const bucketLabels: Record<string, string> = {
+      completed: 'Đã thanh toán (đã tới chủ nhà)',
+      pending_landlord: 'Đã thanh toán (Chưa tới chủ nhà)',
+      unpaid: 'Chưa thanh toán',
+    };
 
-    csvRows.push([
-      'TỔNG CỘNG', '', '', '', '',
-      grandWater, grandSurcharge, grandElectric, grandTotalRevenue, '',
-    ]);
+    let csvContent = "﻿";
 
-    const headerLines = [
+    // Header lines
+    csvContent += [
       'Phương Nam Apartment',
       'Tòa nhà Căn hộ Dịch vụ & Cho thuê',
       '',
@@ -211,10 +226,32 @@ export function ReportsTab({ data, loading }: Props) {
         ? `Từ: ${new Date(fromDatetime).toLocaleString('vi-VN')} → Đến: ${toDatetime ? new Date(toDatetime).toLocaleString('vi-VN') : 'Hiện tại'}`
         : '',
       '',
-    ].map(line => `"${line}"`);
+    ].map(l => `"${l}"`).join('\n') + '\n';
 
-    let csvContent = "﻿" + headerLines.join('\n') + '\n'
-      + [headers.join(','), ...csvRows.map(e => e.join(','))].join('\n');
+    // Per-bucket sections
+    for (const key of ['completed', 'pending_landlord', 'unpaid'] as const) {
+      const bucketData = filteredReportData.filter(r => r.bucket === key);
+      if (bucketData.length === 0) continue;
+
+      csvContent += `"── ${bucketLabels[key]} ──"\n`;
+      csvContent += headers.join(',') + '\n';
+      bucketData.forEach((r, idx) => {
+        csvContent += [idx + 1, r.room_id, `${r.contract_id}${r.tenant_name ? ` (${r.tenant_name})` : ''}`,
+          r.room_rent,
+          r.water_total, r.surcharge_total, r.electric_total, r.amount,
+          r.payment_type, r.date, `"${(r.note || '').replace(/"/g, '""')}"`,
+        ].join(',') + '\n';
+      });
+
+      const bAmount = bucketData.reduce((s, r) => s + r.amount, 0);
+      const bWater = bucketData.reduce((s, r) => s + r.water_total, 0);
+      const bSurcharge = bucketData.reduce((s, r) => s + r.surcharge_total, 0);
+      const bElectric = bucketData.reduce((s, r) => s + r.electric_total, 0);
+      csvContent += `TỔNG,,${bucketLabels[key]},,${bWater},${bSurcharge},${bElectric},${bAmount},,,,\n\n`;
+    }
+
+    // Grand total
+    csvContent += `TỔNG CỘNG,,,,${grandWater},${grandSurcharge},${grandElectric},${grandTotalRevenue},,,,\n`;
 
     // Append expenses section
     if (periodExpenses.length > 0) {
@@ -297,41 +334,44 @@ export function ReportsTab({ data, loading }: Props) {
             <thead className="bg-slate-50 text-slate-600 print:bg-white print:text-black">
               <tr>
                 <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black whitespace-nowrap text-center w-10">STT</th>
-                <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black whitespace-nowrap">Ngày TT</th>
                 <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black">Phòng</th>
                 <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black">Hợp đồng</th>
-                <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black">Loại thanh toán</th>
-                <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black text-right whitespace-nowrap">Nước (VND)</th>
-                <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black text-right whitespace-nowrap">Phí DV (VND)</th>
-                <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black text-right whitespace-nowrap">Điện (VND)</th>
-                <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black text-right whitespace-nowrap text-indigo-700 print:text-black">Thành tiền (VND)</th>
-                <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black min-w-[150px]">Ghi chú</th>
+                <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black text-right whitespace-nowrap print:min-w-[90px]">Tiền phòng (VND)</th>
+                <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black text-right whitespace-nowrap print:min-w-[90px]">Nước (VND)</th>
+                <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black text-right whitespace-nowrap print:min-w-[90px]">Phí DV (VND)</th>
+                <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black text-right whitespace-nowrap print:min-w-[90px]">Điện (VND)</th>
+                <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black text-right whitespace-nowrap print:min-w-[90px] text-indigo-700 print:text-black">Thành tiền (VND)</th>
+                <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black whitespace-nowrap">Loại TT</th>
+                <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black whitespace-nowrap">Ngày TT</th>
+                <th className="px-3 py-3 font-semibold border-b border-slate-200 print:border-black print:!text-[6pt] w-20 print:w-10">Ghi chú</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 print:divide-black">
               {bucketData.map((r, idx) => (
                 <motion.tr key={r.id || idx} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="hover:bg-slate-50/50">
                   <td className="px-3 py-2 text-center text-slate-500 print:border-b print:border-slate-300">{idx + 1}</td>
-                  <td className="px-3 py-2 whitespace-nowrap text-slate-600 print:border-b print:border-slate-300">{r.date || '—'}</td>
                   <td className="px-3 py-2 font-bold text-slate-800 print:border-b print:border-slate-300">{r.room_id}</td>
-                  <td className="px-3 py-2 text-xs text-slate-500 font-mono print:border-b print:border-slate-300">{r.contract_id}</td>
-                  <td className="px-3 py-2 text-slate-600 print:border-b print:border-slate-300">{r.payment_type}</td>
+                  <td className="px-3 py-2 text-xs text-slate-500 font-mono print:border-b print:border-slate-300">{r.contract_id}{r.tenant_name ? ` (${r.tenant_name})` : ''}</td>
+                  <td className="px-3 py-2 text-right text-slate-600 print:border-b print:border-slate-300">{formatVND(r.room_rent)}</td>
                   <td className="px-3 py-2 text-right text-blue-600 print:border-b print:border-slate-300 print:text-black">{formatVND(r.water_total)}</td>
                   <td className="px-3 py-2 text-right text-amber-600 print:border-b print:border-slate-300 print:text-black">{formatVND(r.surcharge_total)}</td>
                   <td className="px-3 py-2 text-right text-rose-600 print:border-b print:border-slate-300 print:text-black">{formatVND(r.electric_total)}</td>
                   <td className="px-3 py-2 text-right font-bold text-indigo-600 print:border-b print:border-slate-300 print:text-black">{formatVND(r.amount)}</td>
-                  <td className="px-3 py-2 text-xs text-slate-500 max-w-[200px] truncate print:whitespace-normal print:border-b print:border-slate-300" title={r.note}>{r.note || '—'}</td>
+                  <td className="px-3 py-2 text-slate-600 print:border-b print:border-slate-300">{r.payment_type}</td>
+                  <td className="px-3 py-2 whitespace-nowrap text-slate-600 print:border-b print:border-slate-300">{r.date || '—'}</td>
+                  <td className="px-3 py-2 text-xs text-slate-500 truncate print:whitespace-normal print:border-b print:border-slate-300 print:!text-[6pt]" title={r.note}>{r.note || '—'}</td>
                 </motion.tr>
               ))}
             </tbody>
             <tbody className="bg-slate-50 font-bold text-slate-800 print:bg-white print:border-t-2 print:border-black">
               <tr className="border-t border-slate-200 print:border-black bg-slate-100/50 print:bg-white text-[11px] print:text-[10px]">
                 <td colSpan={4} className="px-3 py-3 text-right uppercase font-bold text-slate-600">TỔNG CỘNG</td>
-                <td className="px-3 py-3 text-right text-slate-400 font-semibold whitespace-nowrap">—</td>
                 <td className="px-3 py-3 text-right font-bold text-blue-600 print:text-black whitespace-nowrap">{formatVND(tWater)}</td>
                 <td className="px-3 py-3 text-right font-bold text-amber-600 print:text-black whitespace-nowrap">{formatVND(tSurcharge)}</td>
                 <td className="px-3 py-3 text-right font-bold text-rose-600 print:text-black whitespace-nowrap">{formatVND(tElectric)}</td>
                 <td className="px-3 py-3 text-right font-black text-indigo-700 print:text-black whitespace-nowrap">{formatVND(tAmount)}</td>
+                <td className="px-3 py-3 text-right text-slate-400 font-semibold whitespace-nowrap">—</td>
+                <td />
                 <td />
               </tr>
             </tbody>
@@ -457,32 +497,32 @@ export function ReportsTab({ data, loading }: Props) {
             print-color-adjust: exact !important;
             background: white !important;
             margin: 0 !important;
-            padding: 1.25cm !important;
-            font-size: 23pt !important;
-            line-height: 1.25 !important;
+            padding: 0 !important;
+            font-size: 12pt !important;
+            line-height: 1.2 !important;
           }
           .print\\:hidden { display: none !important; }
           .print\\:block { display: block !important; }
           table {
             width: 100% !important;
             border-collapse: collapse !important;
-            border: 2px solid #000 !important;
+            border: 1px solid #000 !important;
+            margin: 0 2px !important;
             page-break-inside: auto !important;
           }
           tr { page-break-inside: avoid !important; page-break-after: auto !important; }
           thead { display: table-header-group !important; }
           th, td {
-            border: 2px solid #000 !important;
-            padding: 8px !important;
-            font-size: 22pt !important;
-            line-height: 1.25 !important;
+            border: 1px solid #000 !important;
+            padding: 2px !important;
+            font-size: 12pt !important;
             white-space: normal !important;
             word-break: break-word !important;
           }
           th { background-color: #f3f4f6 !important; }
-          h1 { font-size: 34pt !important; font-weight: bold !important; line-height: 1.3 !important; }
-          h2 { font-size: 29pt !important; font-weight: bold !important; line-height: 1.3 !important; }
-          h3, h4 { font-size: 23pt !important; font-weight: bold !important; line-height: 1.3 !important; }
+          h1 { font-size: 12pt !important; font-weight: bold !important; }
+          h2 { font-size: 10pt !important; font-weight: bold !important; }
+          h3, h4 { font-size: 8pt !important; font-weight: bold !important; }
           .expense-report-page { page-break-before: auto !important; }
         }
       `}</style>
