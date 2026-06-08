@@ -9,6 +9,7 @@ import { ConfirmDialog } from './ui/ConfirmDialog';
 import { DatePickerInput } from './ui/DatePickerInput';
 import { getContractMonthRange } from '../lib/settings-helpers';
 import { roundUp10k, roundUp1k } from '../lib/payment-utils';
+import { getContractFullTenantName, getContractTenantPhone } from '../lib/tenant-utils';
 
 const formatVND = (n: number, showSuffix: boolean = true) => new Intl.NumberFormat('en-US').format(n) + (showSuffix ? ' VND' : '');
 const todayStr = () => {
@@ -104,20 +105,7 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
   const isAdmin = role === 'admin';
 
   // Lookup helpers for tenant data via tenant_id
-  const findTenant = (c: any) => {
-    if (c.tenant_id) return data.tenants.find((t: any) => t.id === c.tenant_id) || null;
-    // Fallback: old contracts without tenant_id — find first tenant in this room
-    const roomTenants = data.tenants.filter((t: any) => String(t.room_id).trim() === String(c.room_id).trim());
-    return roomTenants.length > 0 ? roomTenants[0] : null;
-  };
-  const getTenantName = (c: any) => {
-    const t = findTenant(c);
-    return t ? t.name : (c.tenant || '—');
-  };
-  const getTenantPhone = (c: any) => {
-    const t = findTenant(c);
-    return t ? t.phone : (c.phone || '');
-  };
+  // (uses shared helpers from tenant-utils.ts)
 
   const rawContracts = filter === 'active' ? data.contracts : (filter === 'ended' ? data.contracts_all.filter((c: any) => c.status !== 'active') : data.contracts_all);
   const { min: minMonths, max: maxMonths } = getContractMonthRange(data.settings);
@@ -283,7 +271,7 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
           const proratedWater = roundUp1k((Number(data?.settings?.WATER_PRICE_PER_PERSON) || 0) * peopleCount / 30 * ds);
           const proratedService = roundUp1k((Number(data?.settings?.SURCHARGE_PER_PERSON) || 0) * peopleCount / 30 * ds);
 
-          let note = `Trả cọc - Phòng ${contract.room_id} - ${getTenantName(contract)}`;
+          let note = `Trả cọc - Phòng ${contract.room_id} - ${getContractFullTenantName(contract, data.tenants)}`;
           let electricCost = 0;
 
           if (!isNaN(moveOutReading) && !isNaN(baselineReading) && moveOutReading > baselineReading) {
@@ -302,7 +290,7 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
             await API.createPayable(config, {
               contract_id: contract.id,
               room_id: contract.room_id,
-              tenant: getTenantName(contract),
+              tenant: getContractFullTenantName(contract, data.tenants),
               amount: refundAmount,
               status: 'pending',
               payable_type: 'Trả cọc',
@@ -515,8 +503,8 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
                 <motion.tr key={c.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="hover:bg-slate-50/50 transition-colors">
                   <td className="px-4 py-3 font-mono text-xs text-slate-700">{c.id}</td>
                   <td className="px-4 py-3 font-medium">{c.room_id}</td>
-                  <td className="px-4 py-3">{getTenantName(c)}</td>
-                  <td className="px-4 py-3 text-slate-500">{getTenantPhone(c)}</td>
+                  <td className="px-4 py-3">{getContractFullTenantName(c, data.tenants)}</td>
+                  <td className="px-4 py-3 text-slate-500">{getContractTenantPhone(c, data.tenants)}</td>
                   <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{displayRange(c.start_date, c.end_date, c.duration)}</td>
                   <td className="px-4 py-3 font-medium text-indigo-600">{formatVND(c.rent)}</td>
                   <td className="px-4 py-3">{formatVND(c.deposit_paid || 0)}</td>

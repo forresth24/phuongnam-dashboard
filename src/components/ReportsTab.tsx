@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { FileDown, Printer, Search } from 'lucide-react';
 import type { AppConfig, DashboardData } from '../lib/api';
 import { formatVND as originalFormatVND } from '../lib/payment-utils';
+import { buildContractTenantNameMap } from '../lib/tenant-utils';
 const formatVND = (amount: number) => originalFormatVND(amount, false);
 
 export const normalizePeriod = (pStr: string): string => {
@@ -133,14 +134,7 @@ export function ReportsTab({ data, loading }: Props) {
       contractRoomMap.set(c.id, c.room_id);
       contractRentMap.set(c.id, safeParseNumber(c.rent) + safeParseNumber(c.extra_person_fee));
     });
-    const tenantRoomMap = new Map<string, string>();
-    (data.tenants || []).forEach(t => {
-      if (!tenantRoomMap.has(t.room_id)) {
-        // Grab the given name (last word of Vietnamese name)
-        const nameParts = String(t.name || '').trim().split(/\s+/);
-        tenantRoomMap.set(t.room_id, nameParts[nameParts.length - 1] || '');
-      }
-    });
+    const contractTenantMap = buildContractTenantNameMap(data.contracts_all);
 
     // 3. Each payment → one row
     const rows = targetPayments.map(p => {
@@ -150,7 +144,7 @@ export function ReportsTab({ data, loading }: Props) {
         id: p.id || '',
         contract_id: cid,
         room_id: roomId,
-        tenant_name: tenantRoomMap.get(roomId) || '',
+        tenant_name: contractTenantMap.get(cid) || '',
         room_rent: contractRentMap.get(cid) || 0,
         payment_type: p.payment_type || '',
         date: getPaymentDisplayDate(p),

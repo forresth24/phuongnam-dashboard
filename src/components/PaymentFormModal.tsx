@@ -13,6 +13,7 @@ import {
   makeEmptyPaymentForm, getPaymentTypeLabel,
   type PaymentFormData, type PaymentFieldError,
 } from '../lib/payment-utils';
+import { findContractTenant } from '../lib/tenant-utils';
 
 // ─── Props ────────────────────────────────────────────────
 
@@ -96,12 +97,12 @@ export function PaymentFormModal({
 
   const getContractTenantName = (contract: any) => {
     if (!contract) return '';
-    const t = data.tenants.find((t: any) => t.id === contract.tenant_id);
+    const t = findContractTenant(contract, data.tenants);
     return t ? t.name : '';
   };
   const getContractTenantPhone = (contract: any) => {
     if (!contract) return '';
-    const t = data.tenants.find((t: any) => t.id === contract.tenant_id);
+    const t = findContractTenant(contract, data.tenants);
     return t ? t.phone : '';
   };
 
