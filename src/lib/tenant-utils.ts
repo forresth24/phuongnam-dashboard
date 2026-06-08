@@ -19,13 +19,24 @@ export function getContractTenantName(contract: any): string {
 
 /**
  * Build a Map<contract_id, givenName> from contracts data.
- * ID-based — the only correct way to resolve tenant names in reports.
+ * Falls back to tenant_id → tenants array when contract.tenant is unavailable
+ * (e.g. the tenant column was removed from the contracts sheet).
  */
-export function buildContractTenantNameMap(contracts: any[]): Map<string, string> {
+export function buildContractTenantNameMap(contracts: any[], tenants?: any[]): Map<string, string> {
   const map = new Map<string, string>();
   for (const c of contracts || []) {
-    if (c.id && c.tenant) {
-      map.set(c.id, getContractTenantName(c));
+    let name = '';
+    if (c.tenant) {
+      name = getContractTenantName(c);
+    } else if (tenants && c.tenant_id) {
+      const t = findTenantById(tenants, c.tenant_id);
+      if (t?.name) {
+        const parts = String(t.name).trim().split(/\s+/);
+        name = parts[parts.length - 1] || '';
+      }
+    }
+    if (c.id && name) {
+      map.set(c.id, name);
     }
   }
   return map;
@@ -40,26 +51,27 @@ export function findTenantById(tenants: any[], tenantId: string): any | null {
 
 /**
  * Resolve the representative tenant for a contract.
- *  1. By tenant_id (preferred — exact match)
- *  2. By room_id + name match (fallback for legacy data)
+ *  1. By tenant_id (preferred — if set, authoritative, don't fall through)
+ *  2. By room_id + name match (fallback for contracts without tenant_id)
  *  3. By room_id only (last resort, first tenant found)
  *
- * This is intentionally conservative: it prefers to match the correct tenant
- * rather than returning stale data for old contracts.
+ * Key rule: if tenant_id is set, it's the single source of truth.
+ * Don't fall through to room_id — a room can have different tenants over
+ * time, and an archived contract's tenant_id may point to a deleted tenant
+ * while a new tenant occupies the same room.
  */
 export function findContractTenant(contract: any, tenants: any[]): any | null {
   if (!contract) return null;
 
-  // 1. Exact tenant_id match
+  // 1. Exact tenant_id match (authoritative — if set, use only this)
   if (contract.tenant_id) {
-    const t = findTenantById(tenants, contract.tenant_id);
-    if (t) return t;
+    return findTenantById(tenants, contract.tenant_id);
   }
 
   const roomId = String(contract.room_id || '').trim();
   if (!roomId) return null;
 
-  // 2. Same room + same name
+  // 2. Same room + same name (for contracts without tenant_id)
   const contractName = String(contract.tenant || '').trim().toLowerCase();
   const roomTenants = (tenants || []).filter(
     (t: any) => String(t.room_id || '').trim() === roomId,

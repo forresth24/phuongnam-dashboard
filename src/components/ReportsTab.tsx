@@ -68,6 +68,30 @@ function getPaymentTime(p: any): Date | null {
   return null;
 }
 
+/**
+ * Parse expense datetime for time range filtering.
+ * Tries expense_date (DD/MM/YYYY), expense_date (YYYY-MM-DD), created_at.
+ */
+function getExpenseTime(e: any): Date | null {
+  for (const field of ['expense_date', 'created_at']) {
+    const v = e[field];
+    if (!v) continue;
+    if (typeof v === 'string' && !v.includes('/')) {
+      const d = new Date(v);
+      if (!isNaN(d.getTime())) return d;
+      continue;
+    }
+    if (typeof v === 'string' && v.includes('/')) {
+      const m = v.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
+      if (m) {
+        const d2 = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]), Number(m[4] || 0), Number(m[5] || 0), Number(m[6] || 0));
+        if (!isNaN(d2.getTime())) return d2;
+      }
+    }
+  }
+  return null;
+}
+
 export function ReportsTab({ data, loading }: Props) {
   const currentMonth = new Date().getMonth() + 1;
   const currentYear = new Date().getFullYear();
@@ -134,7 +158,7 @@ export function ReportsTab({ data, loading }: Props) {
       contractRoomMap.set(c.id, c.room_id);
       contractRentMap.set(c.id, safeParseNumber(c.rent) + safeParseNumber(c.extra_person_fee));
     });
-    const contractTenantMap = buildContractTenantNameMap(data.contracts_all);
+    const contractTenantMap = buildContractTenantNameMap(data.contracts_all, data.tenants);
 
     // 3. Each payment → one row
     const rows = targetPayments.map(p => {
@@ -215,9 +239,9 @@ export function ReportsTab({ data, loading }: Props) {
       '',
       'BÁO CÁO DÒNG TIỀN',
       selectedPeriod
-        ? `Kỳ thanh toán: ${selectedPeriod}`
+        ? `Kỳ thanh toán: ${periodLabel}`
         : fromDatetime
-        ? `Từ: ${new Date(fromDatetime).toLocaleString('vi-VN')} → Đến: ${toDatetime ? new Date(toDatetime).toLocaleString('vi-VN') : 'Hiện tại'}`
+        ? `Từ: ${new Date(fromDatetime).toLocaleString('vi-VN')} → Đến: ${toDatetime ? new Date(toDatetime).toLocaleString('vi-VN') : formatNow()}`
         : '',
       '',
     ].map(l => `"${l}"`).join('\n') + '\n';
@@ -253,7 +277,7 @@ export function ReportsTab({ data, loading }: Props) {
       const reimbExp = periodExpenses.filter(e => e.is_reimbursement === true || e.is_reimbursement === 'true');
 
       csvContent += '\n\n';
-      csvContent += `"CHI PHÍ PHÁT SINH THÁNG ${selectedPeriod}"\n\n`;
+      csvContent += `"CHI PHÍ PHÁT SINH THÁNG ${periodLabel}"\n\n`;
 
       if (directExp.length > 0) {
         csvContent += '"Chi phí trực tiếp (Chủ nhà thanh toán)"\n';
@@ -375,14 +399,23 @@ export function ReportsTab({ data, loading }: Props) {
     );
   };
 
-  // ── Render ──
+  const formatNow = () => {
+    const d = new Date();
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    const ss = String(d.getSeconds()).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mon = String(d.getMonth() + 1).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    return `${hh}:${mm}:${ss} ${dd}/${mon}/${yyyy}`;
+  };
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 print:hidden">
         <h2 className="text-xl font-bold text-slate-800">Báo cáo dòng tiền</h2>
         <div className="flex flex-wrap items-center gap-3">
           <select
-            value={selectedPeriod}
+            value={periodLabel}
             onChange={e => { setSelectedPeriod(e.target.value); setTimeRangeId(0); }}
             className={`px-4 py-2 border rounded-xl text-sm font-medium focus:ring-2 focus:ring-indigo-400 focus:outline-none appearance-none cursor-pointer ${fromDatetime ? 'opacity-50' : 'bg-white border-slate-200 text-slate-700'}`}
           >
@@ -459,9 +492,9 @@ export function ReportsTab({ data, loading }: Props) {
             <h1 className="text-2xl font-bold uppercase">Báo Cáo Dòng Tiền</h1>
             <p className="text-lg mt-2">
               {selectedPeriod
-                ? `Kỳ thanh toán: ${selectedPeriod}`
+                ? `Kỳ thanh toán: ${periodLabel}`
                 : fromDatetime
-                ? `Từ: ${new Date(fromDatetime).toLocaleString('vi-VN')}  →  Đến: ${toDatetime ? new Date(toDatetime).toLocaleString('vi-VN') : 'Hiện tại'}`
+                ? `Từ: ${new Date(fromDatetime).toLocaleString('vi-VN')}  →  Đến: ${toDatetime ? new Date(toDatetime).toLocaleString('vi-VN') : formatNow()}`
                 : ''}
             </p>
           </div>
@@ -479,8 +512,8 @@ export function ReportsTab({ data, loading }: Props) {
       </div>
 
       {/* Expense + Payables sections */}
-      {selectedPeriod && <ExpenseReportSection data={data} selectedPeriod={selectedPeriod} />}
-      {selectedPeriod && <PayablesSection data={data} selectedPeriod={selectedPeriod} />}
+      {(selectedPeriod || (timeRangeId > 0 && fromDatetime)) && <ExpenseReportSection data={data} selectedPeriod={periodLabel} fromDatetime={fromDatetime} toDatetime={toDatetime} />}
+      {(selectedPeriod || (timeRangeId > 0 && fromDatetime)) && <PayablesSection data={data} selectedPeriod={periodLabel} fromDatetime={fromDatetime} toDatetime={toDatetime} />}
 
       <style>{`
         @media print {
@@ -526,17 +559,27 @@ export function ReportsTab({ data, loading }: Props) {
 
 // ── Expense Report Sub-component ──
 
-function ExpenseReportSection({ data, selectedPeriod }: { data: DashboardData | null; selectedPeriod: string }) {
+function ExpenseReportSection({ data, selectedPeriod, fromDatetime, toDatetime }: { data: DashboardData | null; selectedPeriod: string; fromDatetime?: string; toDatetime?: string }) {
+  const periodLabel = selectedPeriod || (fromDatetime ? `${new Date(fromDatetime).toLocaleDateString('vi-VN')} → ${toDatetime ? new Date(toDatetime).toLocaleDateString('vi-VN') : new Date().toLocaleDateString('vi-VN')}` : '');
   const expenses = useMemo(() => {
-    if (!data?.expenses || !selectedPeriod) return [];
-    const target = normalizePeriod(selectedPeriod);
-    return data.expenses.filter(e => normalizePeriod(e.period) === target);
-  }, [data, selectedPeriod]);
+    if (!data?.expenses) return [];
+    if (selectedPeriod) {
+      const target = normalizePeriod(selectedPeriod);
+      return data.expenses.filter(e => normalizePeriod(e.period) === target);
+    }
+    // Time range filter
+    const fromTime = fromDatetime ? new Date(fromDatetime).getTime() : -Infinity;
+    const toTime = toDatetime ? new Date(toDatetime).getTime() : Date.now();
+    return data.expenses.filter(e => {
+      const dt = getExpenseTime(e);
+      return dt && dt.getTime() >= fromTime && dt.getTime() <= toTime;
+    });
+  }, [data, selectedPeriod, fromDatetime, toDatetime]);
 
   if (expenses.length === 0) {
     return (
       <div className="mt-6 p-8 border-2 border-dashed border-slate-200 rounded-2xl text-center text-slate-400 print:hidden">
-        Không có dữ liệu chi phí cho kỳ {selectedPeriod} để hiển thị trong báo cáo.
+        Không có dữ liệu chi phí cho kỳ {periodLabel} để hiển thị trong báo cáo.
       </div>
     );
   }
@@ -555,14 +598,14 @@ function ExpenseReportSection({ data, selectedPeriod }: { data: DashboardData | 
         </div>
         <div className="text-center pt-6">
           <h1 className="text-xl font-bold uppercase">Bảng Kê Chi Phí Phát Sinh</h1>
-          <p className="text-sm mt-1">Kỳ thanh toán: {selectedPeriod}</p>
+          <p className="text-sm mt-1">Kỳ thanh toán: {periodLabel}</p>
         </div>
       </div>
 
       <div className="p-4 border-b border-slate-100 print:hidden bg-slate-50/50">
         <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
           <span className="w-1.5 h-6 bg-indigo-500 rounded-full" />
-          Chi phí phát sinh tháng {selectedPeriod}
+          Chi phí phát sinh tháng {periodLabel}
           <span className="ml-2 text-xs font-normal text-slate-400 bg-white px-2 py-1 rounded-md border border-slate-200 shadow-sm">Trang 2 khi in PDF</span>
         </h3>
       </div>
@@ -678,25 +721,35 @@ function ExpenseReportSection({ data, selectedPeriod }: { data: DashboardData | 
 
 // ── Payables Section ──
 
-function PayablesSection({ data, selectedPeriod }: { data: DashboardData | null; selectedPeriod: string }) {
+function PayablesSection({ data, selectedPeriod, fromDatetime, toDatetime }: { data: DashboardData | null; selectedPeriod: string; fromDatetime?: string; toDatetime?: string }) {
+  const periodLabel = selectedPeriod || (fromDatetime ? `${new Date(fromDatetime).toLocaleDateString('vi-VN')} → ${toDatetime ? new Date(toDatetime).toLocaleDateString('vi-VN') : new Date().toLocaleDateString('vi-VN')}` : '');
   const periodPayables = useMemo(() => {
-    if (!data?.payables || !selectedPeriod) return [];
-    const [selMonth, selYear] = selectedPeriod.split('/').map(Number);
+    if (!data?.payables) return [];
+    if (selectedPeriod) {
+      const [selMonth, selYear] = selectedPeriod.split('/').map(Number);
+      return data.payables.filter((p: any) => {
+        const createdAt = p.created_at || '';
+        let pMonth = -1, pYear = -1;
+        if (createdAt.includes('T')) {
+          const datePart = createdAt.split('T')[0];
+          const parts = datePart.split('-');
+          if (parts.length === 3) { pYear = Number(parts[0]); pMonth = Number(parts[1]); }
+        }
+        if (pMonth === -1 && createdAt.includes('/')) {
+          const parts = createdAt.split('/');
+          if (parts.length === 3) { pMonth = Number(parts[1]); pYear = Number(parts[2]); }
+        }
+        return pMonth === selMonth && pYear === selYear;
+      });
+    }
+    // Time range filter
+    const fromTime = fromDatetime ? new Date(fromDatetime).getTime() : -Infinity;
+    const toTime = toDatetime ? new Date(toDatetime).getTime() : Date.now();
     return data.payables.filter((p: any) => {
-      const createdAt = p.created_at || '';
-      let pMonth = -1, pYear = -1;
-      if (createdAt.includes('T')) {
-        const datePart = createdAt.split('T')[0];
-        const parts = datePart.split('-');
-        if (parts.length === 3) { pYear = Number(parts[0]); pMonth = Number(parts[1]); }
-      }
-      if (pMonth === -1 && createdAt.includes('/')) {
-        const parts = createdAt.split('/');
-        if (parts.length === 3) { pMonth = Number(parts[1]); pYear = Number(parts[2]); }
-      }
-      return pMonth === selMonth && pYear === selYear;
+      const d = new Date(p.created_at || '');
+      return !isNaN(d.getTime()) && d.getTime() >= fromTime && d.getTime() <= toTime;
     });
-  }, [data, selectedPeriod]);
+  }, [data, selectedPeriod, fromDatetime, toDatetime]);
 
   if (periodPayables.length === 0) return null;
 
@@ -707,7 +760,7 @@ function PayablesSection({ data, selectedPeriod }: { data: DashboardData | null;
       <div className="p-4 border-b border-slate-100 bg-red-50/30">
         <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
           <span className="w-1.5 h-6 bg-red-500 rounded-full" />
-          Khoản phải trả thực tế tháng {selectedPeriod}
+          Khoản phải trả thực tế tháng {periodLabel}
         </h3>
       </div>
       <div className="overflow-x-auto">
