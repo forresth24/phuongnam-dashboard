@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Pencil, Trash2, Archive, Loader2, FileDown, ArrowUpDown, ChevronUp, ChevronDown, RefreshCw, ScrollText } from 'lucide-react';
+import { Plus, Pencil, Trash2, Archive, Loader2, FileDown, ArrowUpDown, ChevronUp, ChevronDown, RefreshCw, ScrollText, MoreVertical } from 'lucide-react';
 import { API, downloadBase64Pdf } from '../lib/api';
 import type { AppConfig, DashboardData, UserRole } from '../lib/api';
 import { Badge } from './ui/Badge';
@@ -79,6 +79,8 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
   const [calculatedConsumption, setCalculatedConsumption] = useState(0);
   const [calculatedElectricCost, setCalculatedElectricCost] = useState(0);
   const [pdfLoading, setPdfLoading] = useState<string | null>(null);
+  const [terminationContract, setTerminationContract] = useState<any>(null);
+  const [moreMenuId, setMoreMenuId] = useState<string | null>(null);
 
   const [restoringId, setRestoringId] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<string>('room_id');
@@ -510,27 +512,60 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
                   <td className="px-4 py-3">{formatVND(c.deposit_paid || 0)}</td>
                   <td className="px-4 py-3"><Badge variant={c.status === 'active' ? 'success' : 'neutral'}>{c.status === 'active' ? 'Đang hoạt động' : 'Đã kết thúc'}</Badge></td>
                     <td className="px-4 py-3">
-                      <div className="flex gap-1">
-                        <button onClick={() => { setSignDateOption('today'); setSignDateCustom(''); setSignDateModal({ type: 'contract', contractId: c.id }); }} disabled={pdfLoading === `contract_${c.id}`}
-                          title="Xuất PDF Hợp đồng" className="p-1.5 rounded-lg hover:bg-blue-50 text-slate-400 hover:text-blue-600 disabled:opacity-50">
-                          {pdfLoading === `contract_${c.id}` ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} />}
-                        </button>
-                        <button 
-                          onClick={() => {
-                            const roomTenants = data.tenants.filter((t: any) => String(t.room_id).trim() === String(c.room_id).trim());
-                            setSubContractActiveContract(c);
-                            if (roomTenants.length > 0) {
-                              setSelectedTenants(roomTenants.map((t: any) => t.id));
-                            } else {
-                              setSelectedTenants(['representative']);
+                      <div className="flex gap-1 items-center">
+                        <div className="relative">
+                          <button onClick={(e) => { e.stopPropagation(); setMoreMenuId(moreMenuId === c.id ? null : c.id); }}
+                            title="Xuất PDF" className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600">
+                            <MoreVertical size={14} />
+                          </button>
+                          {moreMenuId === c.id && (
+                            <>
+                              <div className="fixed inset-0 z-40" onClick={() => setMoreMenuId(null)} />
+                              <div className="absolute left-0 top-full z-50 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg py-1 min-w-[150px]">
+                                <button onClick={() => { setMoreMenuId(null); setSignDateOption('today'); setSignDateCustom(''); setSignDateModal({ type: 'contract', contractId: c.id }); }}
+                                  disabled={pdfLoading === `contract_${c.id}`}
+                                  className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50 text-left">
+                                  <FileDown size={13} className="text-blue-500" /> PDF Hợp đồng
+                                </button>
+                                <button onClick={() => { setMoreMenuId(null); const roomTenants = data.tenants.filter((t: any) => String(t.room_id).trim() === String(c.room_id).trim()); setSubContractActiveContract(c); setSelectedTenants(roomTenants.length > 0 ? roomTenants.map((t: any) => t.id) : ['representative']); setSubContractModalOpen(true); }}
+                                  disabled={pdfLoading !== null}
+                                  className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50 text-left">
+                                  <FileDown size={13} className="text-emerald-500" /> PDF HĐ Phụ
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                        {isAdmin && c.status !== 'active' && (
+                          <button onClick={() => {
+                            const contractPayments = (data.payments || []).filter(
+                              (p: any) => String(p.contract_id).trim() === String(c.id).trim()
+                            );
+                            let defaultReading = '';
+                            if (contractPayments.length > 0) {
+                              const sorted = [...contractPayments].sort((a, b) =>
+                                (b.received_date || b.date || '').localeCompare(a.received_date || a.date || '')
+                              );
+                              const latest = sorted[0];
+                              const isPaid = latest.status === 'Hoàn thành' || latest.status === 'Đã hoàn thành';
+                              if (isPaid) {
+                                defaultReading = String(latest.new_electric || latest.old_electric || '');
+                              } else {
+                                defaultReading = String(latest.old_electric || latest.new_electric || '');
+                              }
                             }
-                            setSubContractModalOpen(true);
-                          }} 
-                          disabled={pdfLoading !== null}
-                          title="Xuất PDF HĐ Phụ" className="p-1.5 rounded-lg hover:bg-emerald-50 text-slate-400 hover:text-emerald-600 disabled:opacity-50"
-                        >
-                          {pdfLoading === `sub_contract_${c.id}` ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} />}
-                        </button>
+                            setFinalElectricReading(defaultReading);
+                            setMoveOutElectricReading('');
+                            setDebtTotal('');
+                            setCleaningFee('');
+                            setStayedDays(30);
+                            setShowCalcBreakdown(false);
+                            setTerminationContract(c);
+                          }} title="Xuất biên bản thanh lý"
+                            className="p-1.5 rounded-lg hover:bg-violet-50 text-slate-400 hover:text-violet-600">
+                            <ScrollText size={14} />
+                          </button>
+                        )}
                         {isAdmin && <button onClick={() => openEdit(c)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-indigo-600"><Pencil size={14} /></button>}
                         {isAdmin && c.status === 'active' && <button onClick={() => {
                           const contractPayments = (data.payments || []).filter(
@@ -544,10 +579,8 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
                             const latest = sorted[0];
                             const isPaid = latest.status === 'Hoàn thành' || latest.status === 'Đã hoàn thành';
                             if (isPaid) {
-                              // Payment đã thanh toán → lấy chỉ số cuối (new_electric) làm mốc
                               defaultReading = String(latest.new_electric || latest.old_electric || '');
                             } else {
-                              // Payment chưa thanh toán → lấy chỉ số cũ (old_electric) làm mốc
                               defaultReading = String(latest.old_electric || latest.new_electric || '');
                             }
                           }
@@ -876,6 +909,101 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
           )}
         </div>
       </ConfirmDialog>
+
+
+      {/* Termination PDF popup for ended contracts */}
+      <Modal open={!!terminationContract} onClose={() => setTerminationContract(null)} title={`Xuất Biên bản thanh lý — Phòng ${terminationContract?.room_id || ''}`} maxWidth="max-w-md">
+        <div className="space-y-3">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-2">
+            <label className="block text-xs font-medium text-slate-600 mb-1">Số ngày ở thực tế tháng cuối</label>
+            <input type="number" min={1} max={31} value={stayedDays}
+              onChange={e => setStayedDays(Math.max(1, Math.min(31, Number(e.target.value) || 30)))}
+              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
+          </div>
+          {finalElectricReading && (
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+              <label className="block text-xs font-medium text-slate-600 mb-1">Chỉ số điện cuối (mốc)</label>
+              <p className="text-sm font-semibold text-slate-800">{finalElectricReading}</p>
+              <p className="text-[10px] text-slate-400 mt-0.5">Từ payment gần nhất, tự động điền</p>
+            </div>
+          )}
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Chỉ số điện tính tới ngày trả phòng</label>
+            <input type="number" value={moveOutElectricReading}
+              onChange={e => {
+                const v = e.target.value;
+                setMoveOutElectricReading(v);
+                const contract = terminationContract;
+                if (contract && v && finalElectricReading) {
+                  const baseline = Number(finalElectricReading);
+                  const moveOut = Number(v);
+                  const electricPrice = Number(data?.settings?.ELECTRIC_PRICE) || 3500;
+                  let electricCost = 0;
+                  if (!isNaN(moveOut) && !isNaN(baseline) && moveOut > baseline) {
+                    const consumption = moveOut - baseline;
+                    electricCost = consumption * electricPrice;
+                    setCalculatedConsumption(consumption);
+                    setCalculatedElectricCost(electricCost);
+                  }
+                  setShowCalcBreakdown(true);
+                } else {
+                  setShowCalcBreakdown(false);
+                }
+              }}
+              placeholder="Nhập chỉ số điện thực tế"
+              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Nợ kỳ trước (nếu có)</label>
+              <input type="number" value={debtTotal} onChange={e => setDebtTotal(e.target.value)} placeholder="0"
+                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Phí vệ sinh (nếu có)</label>
+              <input type="number" value={cleaningFee} onChange={e => setCleaningFee(e.target.value)} placeholder="0"
+                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
+            </div>
+          </div>
+          {showCalcBreakdown && terminationContract && (() => {
+            const contract = terminationContract;
+            const depositPaid = Number(contract?.deposit_paid) || 0;
+            const fullRent = Number(contract?.rent) || 0;
+            const ds = stayedDays || 30;
+            const proratedRent = roundUp1k(fullRent / 30 * ds);
+            const debtAmt = Number(debtTotal) || 0;
+            const cleaningAmt = Number(cleaningFee) || 0;
+            const peopleCount = Number(contract?.people_count) || 1;
+            const proratedWater = roundUp1k((Number(data?.settings?.WATER_PRICE_PER_PERSON) || 0) * peopleCount / 30 * ds);
+            const proratedService = roundUp1k((Number(data?.settings?.SURCHARGE_PER_PERSON) || 0) * peopleCount / 30 * ds);
+            const refundAmount = Math.max(0, depositPaid - proratedRent - proratedWater - proratedService - calculatedElectricCost - debtAmt - cleaningAmt);
+            return (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs space-y-1">
+                <p className="flex justify-between text-slate-700 font-medium">Số tiền đã cọc:<span>{formatVND(depositPaid)}</span></p>
+                {proratedRent > 0 && <p className="flex justify-between text-slate-600">Tiền phòng {ds} ngày:<span className="text-rose-600">-{formatVND(proratedRent)}</span></p>}
+                {proratedWater > 0 && <p className="flex justify-between text-slate-600">Tiền nước {ds} ngày:<span className="text-rose-600">-{formatVND(proratedWater)}</span></p>}
+                {proratedService > 0 && <p className="flex justify-between text-slate-600">Phí dịch vụ {ds} ngày:<span className="text-rose-600">-{formatVND(proratedService)}</span></p>}
+                {calculatedElectricCost > 0 && (
+                  <>
+                    <p className="text-slate-700">Điện tiêu thụ: {calculatedConsumption} kWh</p>
+                    <p className="flex justify-between text-slate-600">Tiền điện:<span className="text-rose-600">-{formatVND(calculatedElectricCost)}</span></p>
+                  </>
+                )}
+                {debtAmt > 0 && <p className="flex justify-between text-slate-600">Nợ kỳ trước:<span className="text-rose-600">-{formatVND(debtAmt)}</span></p>}
+                {cleaningAmt > 0 && <p className="flex justify-between text-slate-600">Phí vệ sinh:<span className="text-rose-600">-{formatVND(cleaningAmt)}</span></p>}
+                <p className="text-blue-800 font-semibold text-sm">Tiền cọc còn lại: {formatVND(refundAmount)}</p>
+              </div>
+            );
+          })()}
+          <button onClick={() => { if (terminationContract) handleTerminationPdf(terminationContract); }}
+            disabled={pdfLoading === `termination_${terminationContract?.id}`}
+            className="w-full bg-violet-600 hover:bg-violet-700 text-white py-2.5 rounded-xl font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2 text-sm">
+            {pdfLoading === `termination_${terminationContract?.id}` ? <Loader2 size={16} className="animate-spin" /> : <ScrollText size={16} />}
+            Xuất Biên bản thanh lý (PDF)
+          </button>
+          <p className="text-xs text-slate-400">Để trống nếu trả đủ tiền cọc và không có khoản trừ khác.</p>
+        </div>
+      </Modal>
 
 
       {/* Sub-Contract Member Selection Modal */}
