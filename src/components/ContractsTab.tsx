@@ -267,7 +267,7 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
           const debt = Number(debtTotal) || 0;
           const cleaning = Number(cleaningFee) || 0;
           const fullRent = Number(contract.rent) || 0;
-          const ds = stayedDays || 30;
+          const ds = stayedDays;
           const peopleCount = Number(contract.people_count) || 1;
           const proratedRent = roundUp1k(fullRent / 30 * ds);
           const proratedWater = roundUp1k((Number(data?.settings?.WATER_PRICE_PER_PERSON) || 0) * peopleCount / 30 * ds);
@@ -325,7 +325,7 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
       const debt = Number(debtTotal) || 0;
       const cleaning = Number(cleaningFee) || 0;
       const fullRent = Number(contract.rent) || 0;
-      const daysStayed = stayedDays || 30;
+      const daysStayed = stayedDays;
       const peopleCount = Number(contract.people_count) || 1;
 
       let refundAmount = deposit;
@@ -795,8 +795,8 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
               {/* Prorated rent for early termination */}
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-2">
                 <label className="block text-xs font-medium text-slate-600 mb-1">Số ngày ở thực tế tháng cuối</label>
-                <input id="input-archive-stayed-days" type="number" min={1} max={31} value={stayedDays}
-                  onChange={e => setStayedDays(Math.max(1, Math.min(31, Number(e.target.value) || 30)))}
+                <input id="input-archive-stayed-days" type="number" min={0} max={31} value={stayedDays}
+                  onChange={e => setStayedDays(e.target.value === "" ? 30 : Math.max(0, Math.min(31, Number(e.target.value))))}
                   className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
               </div>
               {/* Baseline reading from payment — readonly display */}
@@ -825,6 +825,9 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
                         electricCost = consumption * electricPrice;
                         setCalculatedConsumption(consumption);
                         setCalculatedElectricCost(electricCost);
+                      } else {
+                        setCalculatedConsumption(0);
+                        setCalculatedElectricCost(0);
                       }
                       setShowCalcBreakdown(true);
                     } else {
@@ -861,7 +864,7 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
                 const contract = (data?.contracts_all || data?.contracts || []).find((c: any) => c.id === archiveId);
                 const depositPaid = Number(contract?.deposit_paid) || 0;
                 const fullRent = Number(contract?.rent) || 0;
-                const ds = stayedDays || 30;
+                const ds = stayedDays;
                 const proratedRent = roundUp1k(fullRent / 30 * ds);
                 const debtAmt = Number(debtTotal) || 0;
                 const cleaningAmt = Number(cleaningFee) || 0;
@@ -916,8 +919,8 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
         <div className="space-y-3">
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-2">
             <label className="block text-xs font-medium text-slate-600 mb-1">Số ngày ở thực tế tháng cuối</label>
-            <input type="number" min={1} max={31} value={stayedDays}
-              onChange={e => setStayedDays(Math.max(1, Math.min(31, Number(e.target.value) || 30)))}
+            <input type="number" min={0} max={31} value={stayedDays}
+              onChange={e => setStayedDays(e.target.value === "" ? 30 : Math.max(0, Math.min(31, Number(e.target.value))))}
               className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
           </div>
           {finalElectricReading && (
@@ -944,6 +947,9 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
                     electricCost = consumption * electricPrice;
                     setCalculatedConsumption(consumption);
                     setCalculatedElectricCost(electricCost);
+                  } else {
+                    setCalculatedConsumption(0);
+                    setCalculatedElectricCost(0);
                   }
                   setShowCalcBreakdown(true);
                 } else {
@@ -969,7 +975,7 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
             const contract = terminationContract;
             const depositPaid = Number(contract?.deposit_paid) || 0;
             const fullRent = Number(contract?.rent) || 0;
-            const ds = stayedDays || 30;
+            const ds = stayedDays;
             const proratedRent = roundUp1k(fullRent / 30 * ds);
             const debtAmt = Number(debtTotal) || 0;
             const cleaningAmt = Number(cleaningFee) || 0;
