@@ -53,6 +53,7 @@ export function PaymentFormModal({
   const [pendingSubmit, setPendingSubmit] = useState(false);
   const [isNextMonth, setIsNextMonth] = useState(false);
   const [selectedRoomIds, setSelectedRoomIds] = useState<string[]>(initialForm?.room_id ? [initialForm.room_id] : []);
+  const [selectedContractId, setSelectedContractId] = useState<string>(initialForm?.contract_id || '');
 
   const receivers = getReceivers(data.settings);
   const { min: minMonths, max: maxMonths } = getContractMonthRange(data.settings);
@@ -70,6 +71,22 @@ export function PaymentFormModal({
       setErrors({});
       setSaveError('');
       setSelectedRoomIds(initialForm.room_id ? [initialForm.room_id] : []);
+      // Sync selected contract: from initialForm, or derive from room
+      if (initialForm.contract_id) {
+        setSelectedContractId(initialForm.contract_id);
+      } else if (initialForm.room_id) {
+        const contracts = getActiveContracts(initialForm.room_id);
+        if (contracts.length === 1) {
+          setSelectedContractId(contracts[0].id);
+        } else if (contracts.length > 1) {
+          const sorted = [...contracts].sort((a: any, b: any) => String(b.id || '').localeCompare(String(a.id || '')));
+          setSelectedContractId(sorted[0].id);
+        } else {
+          setSelectedContractId('');
+        }
+      } else {
+        setSelectedContractId('');
+      }
 
       // If exporting notices late in the month, default to next month
       if (isNoticeMode && new Date().getDate() >= 20) {
@@ -92,8 +109,21 @@ export function PaymentFormModal({
     }
   }, [open, initialForm, isNoticeMode]);
 
-  const getActiveContract = (roomId: string) =>
-    data.contracts.find((c: any) => String(c.room_id).trim() === String(roomId).trim());
+  const getActiveContracts = (roomId: string) =>
+    data.contracts.filter((c: any) => String(c.room_id).trim() === String(roomId).trim());
+
+  const getActiveContract = (roomId: string) => {
+    const contracts = getActiveContracts(roomId);
+    if (contracts.length === 0) return null;
+    if (contracts.length === 1) return contracts[0];
+    // Multiple contracts: use selectedContractId, or default to newest
+    if (selectedContractId) {
+      const found = contracts.find((c: any) => String(c.id) === String(selectedContractId));
+      if (found) return found;
+    }
+    // Default to newest by id
+    return [...contracts].sort((a: any, b: any) => String(b.id || '').localeCompare(String(a.id || '')))[0];
+  };
 
   const getContractTenantName = (contract: any) => {
     if (!contract) return '';
@@ -106,7 +136,8 @@ export function PaymentFormModal({
     return t ? t.phone : '';
   };
 
-  const needsNewContract = !!(form.room_id && !getActiveContract(form.room_id));
+  const needsNewContract = !!(form.room_id && getActiveContracts(form.room_id).length === 0);
+  const roomActiveContracts = form.room_id ? getActiveContracts(form.room_id) : [];
 
   const calcExpected = (roomId?: string, startDate?: string, peopleCount?: number) => {
     const r = roomId || form.room_id;
@@ -204,9 +235,16 @@ export function PaymentFormModal({
   };
 
   const onRoomChange = (roomId: string) => {
-    const contract = getActiveContract(roomId);
+    const contracts = getActiveContracts(roomId);
+    // Auto-select: if 1 contract, use it; if multiple, default to newest
+    const targetContract = contracts.length === 1 ? contracts[0]
+      : contracts.length > 1 ? [...contracts].sort((a: any, b: any) => String(b.id || '').localeCompare(String(a.id || '')))[0]
+      : null;
+    setSelectedContractId(targetContract ? targetContract.id : '');
+
+    const contract = targetContract;
     const startDate = firstDayOfMonthStr();
-    const exp = calculateExpectedAmount(roomId, data, getActiveContract, !contract, startDate);
+    const exp = calculateExpectedAmount(roomId, data, () => contract, !contract, startDate);
     
     // We need to pass roomId to applyExpectedFields because form.room_id hasn't updated yet
     const fields = applyExpectedFields(exp, roomId);
@@ -581,6 +619,38 @@ export function PaymentFormModal({
                 })}
               </select>
               <FieldErr msg={errors.room_id} />
+              {form.room_id && roomActiveContracts.length > 1 && (
+                <div className="mt-2">
+                  <label className="block text-xs font-medium text-amber-700 mb-1">Chọn hợp đồng ({roomActiveContracts.length} HĐ)</label>
+                  <select value={selectedContractId} onChange={e => {
+                    const newId = e.target.value;
+                    setSelectedContractId(newId);
+                    const c = data.contracts.find((cc: any) => String(cc.id) === String(newId));
+                    if (c) {
+                      const exp = calculateExpectedAmount(form.room_id, data, () => c, false, firstDayOfMonthStr());
+                      const fields = applyExpectedFields(exp, form.room_id);
+                      setForm(prev => ({
+                        ...prev,
+                        contract_id: c.id,
+                        tenant: getContractTenantName(c),
+                        phone: getContractTenantPhone(c),
+                        people_count: Number(c.people_count) || 1,
+                        ...fields,
+                      }));
+                    }
+                  }}
+                    className="w-full border border-amber-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-amber-400 focus:outline-none bg-amber-50/30">
+                    {roomActiveContracts
+                      .sort((a: any, b: any) => String(b.id || '').localeCompare(String(a.id || '')))
+                      .map((c: any) => (
+                        <option key={c.id} value={c.id}>
+                          #{c.id} — {getContractTenantName(c) || c.tenant}
+                        </option>
+                      ))}
+                  </select>
+                  <p className="text-[10px] text-amber-500 mt-0.5">Phòng có nhiều hợp đồng, chọn hợp đồng muốn thu tiền</p>
+                </div>
+              )}
             </div>
           )}
 
