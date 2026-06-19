@@ -93,13 +93,14 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
 
   // Sign date modal state
   const [signDateModal, setSignDateModal] = useState<{
-    type: 'contract' | 'sub_contract';
+    type: 'contract' | 'sub_contract' | 'extension';
     contractId?: string;
     subContractTenants?: string[];
   } | null>(null);
   const [signDateOption, setSignDateOption] = useState<'today' | 'custom' | 'blank'>('today');
   const [signDateCustom, setSignDateCustom] = useState('');
   const [signDateConfirming, setSignDateConfirming] = useState(false);
+  const [extensionDuration, setExtensionDuration] = useState<number>(3);
 
   if (loading) return <div className="flex h-64 items-center justify-center"><Loader2 className="animate-spin text-indigo-500" size={32} /></div>;
   if (!data) return null;
@@ -441,6 +442,19 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
     setSignDateConfirming(false);
   };
 
+  const doGenerateExtensionPdf = async (signDate?: string) => {
+    if (!signDateModal?.contractId) return;
+    setPdfLoading(`extension_${signDateModal.contractId}`);
+    setSignDateConfirming(true);
+    try {
+      const res = await API.getExtensionPdf(config, signDateModal.contractId, extensionDuration, signDate);
+      if (res) downloadBase64Pdf(res.base64, res.filename);
+    } catch (e: any) { alert('Lỗi tạo PDF Phụ lục gia hạn: ' + e.message); }
+    setPdfLoading(null);
+    setSignDateModal(null);
+    setSignDateConfirming(false);
+  };
+
   const handlePdfSignDateConfirm = async () => {
     if (!signDateModal) return;
     let signDate: string | undefined;
@@ -453,6 +467,8 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
       await doGenerateContractPdf(signDate);
     } else if (signDateModal.type === 'sub_contract') {
       await doExportSubContracts(signDate);
+    } else if (signDateModal.type === 'extension') {
+      await doGenerateExtensionPdf(signDate);
     }
   };
 
@@ -531,6 +547,11 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
                                   disabled={pdfLoading !== null}
                                   className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50 text-left">
                                   <FileDown size={13} className="text-emerald-500" /> PDF HĐ Phụ
+                                </button>
+                                <button onClick={() => { setMoreMenuId(null); setExtensionDuration(Number(c.duration) || 3); setSignDateOption('today'); setSignDateCustom(''); setSignDateModal({ type: 'extension', contractId: c.id }); }}
+                                  disabled={pdfLoading === `extension_${c.id}`}
+                                  className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50 text-left">
+                                  <FileDown size={13} className="text-amber-500" /> PDF Phụ lục gia hạn
                                 </button>
                               </div>
                             </>
@@ -1127,6 +1148,15 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
         maxWidth="max-w-sm"
       >
         <div className="space-y-4">
+          {signDateModal?.type === 'extension' && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+              <label className="block text-sm font-medium text-amber-900 mb-2">Số tháng gia hạn</label>
+              <input type="number" min={1} max={120} value={extensionDuration}
+                onChange={e => setExtensionDuration(Math.max(1, Number(e.target.value) || 1))}
+                className="w-full px-3 py-2 border border-amber-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500" />
+              <p className="text-xs text-amber-700 mt-1">Nhập số tháng gia hạn hợp đồng (mặc định theo thời hạn HĐ gốc)</p>
+            </div>
+          )}
           <p className="text-sm text-slate-500">Chọn ngày ký cho hợp đồng:</p>
 
           <label className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${signDateOption === 'today' ? 'border-indigo-400 bg-indigo-50' : 'border-slate-200 hover:bg-slate-50'}`}>

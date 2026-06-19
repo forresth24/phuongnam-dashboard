@@ -59,6 +59,13 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkActing, setBulkActing] = useState(false);
 
+  // Bulk Transfer Modal
+  const [bulkTransferOpen, setBulkTransferOpen] = useState(false);
+  const [bulkTransferDate, setBulkTransferDate] = useState(todayStr());
+  const [bulkTransferMethod, setBulkTransferMethod] = useState('Tiền mặt');
+  const [bulkTransferAmount, setBulkTransferAmount] = useState(0);
+  const [bulkTransferReceiver, setBulkTransferReceiver] = useState('');
+
   if (loading) return <div className="flex h-64 items-center justify-center"><Loader2 className="animate-spin text-indigo-500" size={32} /></div>;
   if (!data) return null;
 
@@ -216,13 +223,27 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
 
   const handleBulkTransfer = async () => {
     if (selectedIds.length === 0) return;
-    if (!confirm(`Bạn có chắc chắn muốn chuyển ${selectedIds.length} khoản thu này cho Chủ nhà?`)) return;
-    
+    const totalAmount = selectedIds.reduce((sum, id) => {
+      const p = rawPayments.find(p => p.id === id);
+      return sum + (Number(p?.amount) || 0);
+    }, 0);
+    setBulkTransferAmount(totalAmount);
+    setBulkTransferReceiver(receivers[0] || '');
+    setBulkTransferMethod('Tiền mặt');
+    setBulkTransferDate(todayStr());
+    setBulkTransferOpen(true);
+  };
+
+  const handleDoBulkTransfer = async () => {
+    if (selectedIds.length === 0) return;
     setBulkActing(true);
+    setBulkTransferOpen(false);
     try {
       await API.bulkUpdatePayments(config, selectedIds, {
-        receiver: 'Chủ nhà',
-        status: autoPaymentStatus('Chủ nhà', data.settings),
+        receiver: bulkTransferReceiver,
+        status: autoPaymentStatus(bulkTransferReceiver, data.settings),
+        method: bulkTransferMethod,
+        received_date: bulkTransferDate,
         updated_at: new Date().toISOString(),
       });
       setSelectedIds([]);
@@ -426,9 +447,31 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
           </select>
         </div>
 
-        <div className="relative">
-          <input id="input-payment-filter-period" name="filter_period" type="text" placeholder="Kỳ (MM/YYYY)..." value={filterPeriod} onChange={e => { setFilterPeriod(e.target.value); setPage(1); }}
-            className="w-full px-4 py-2 bg-slate-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
+        <div className="relative flex gap-2">
+          <select id="select-payment-filter-period" value={filterPeriod} onChange={e => { setFilterPeriod(e.target.value); setPage(1); }}
+            className="flex-1 px-4 py-2 bg-slate-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none appearance-none">
+            <option value="">Tất cả kỳ</option>
+            {(() => {
+              const periods = [...new Set(rawPayments
+                .map(p => p.payment_period || '')
+                .filter(Boolean)
+              )].sort((a, b) => {
+                const [mA, yA] = a.split('/');
+                const [mB, yB] = b.split('/');
+                return Number(yB + mB) - Number(yA + mA);
+              });
+              return periods.map(p => <option key={p} value={p}>{p}</option>);
+            })()}
+          </select>
+          <input type="month" value={filterPeriod ? `20${filterPeriod.split('/')[1]}-${filterPeriod.split('/')[0]}` : ''}
+            onChange={e => {
+              if (e.target.value) {
+                const [y, m] = e.target.value.split('-');
+                setFilterPeriod(`${m}/${y.slice(2)}`);
+                setPage(1);
+              }
+            }}
+            className="w-44 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
         </div>
       </div>
 
@@ -533,6 +576,34 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
               ))}
               {pagedPayments.length === 0 && <tr><td colSpan={13} className="px-4 py-8 text-center text-slate-400">Chưa có giao dịch nào phù hợp bộ lọc</td></tr>}
             </tbody>
+            {selectedIds.length > 0 && (
+              <tfoot>
+                <tr className="bg-indigo-50/80 border-t-2 border-indigo-200">
+                  {isAdmin && <td className="w-12 px-4 py-3 sticky left-0 z-10 bg-indigo-50/80"></td>}
+                  <td className={`px-4 py-3 sticky z-10 bg-indigo-50/80 ${isAdmin ? 'left-12' : 'left-0'}`}>
+                    <span className="font-semibold text-indigo-700 text-sm">Tổng ({selectedIds.length} mục chọn)</span>
+                  </td>
+                  <td className="px-4 py-3"></td>
+                  <td className="px-4 py-3"></td>
+                  <td className="px-4 py-3"></td>
+                  <td className="px-4 py-3">
+                    <span className="font-bold text-indigo-700 text-base">
+                      {formatVND(selectedIds.reduce((sum, id) => {
+                        const p = rawPayments.find(p => p.id === id);
+                        return sum + (Number(p?.amount) || 0);
+                      }, 0))}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3"></td>
+                  <td className="px-4 py-3"></td>
+                  <td className="px-4 py-3"></td>
+                  <td className="px-4 py-3"></td>
+                  <td className="px-4 py-3"></td>
+                  <td className="px-4 py-3"></td>
+                  {isAdmin && <td className="px-4 py-3"></td>}
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
       </div>
@@ -706,6 +777,68 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* Bulk Transfer Modal */}
+      <Modal open={bulkTransferOpen} onClose={() => setBulkTransferOpen(false)} title={`Chuyển ${selectedIds.length} khoản thu cho Chủ nhà`} maxWidth="max-w-md">
+        <div className="space-y-4">
+          <p className="text-sm text-slate-600">
+            Bạn đang chuyển <span className="font-bold text-indigo-600">{selectedIds.length} khoản thu</span> với tổng số tiền <span className="font-bold text-indigo-600">{formatVND(bulkTransferAmount)}</span>.
+          </p>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Số tiền thực nhận<RequiredStar /></label>
+            <div className="relative">
+              <input id="input-bulk-amount" name="bulk_amount" type="number" value={bulkTransferAmount} onChange={e => setBulkTransferAmount(Number(e.target.value) || 0)}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-indigo-600 focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
+              <div className="absolute right-3 top-2 text-[10px] text-slate-400 uppercase font-bold pointer-events-none">VND</div>
+            </div>
+            {bulkTransferAmount > 0 && <p className="text-[10px] text-indigo-500 mt-1 font-medium">{formatVND(bulkTransferAmount)}</p>}
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Người nhận<RequiredStar /></label>
+            <select id="select-bulk-receiver" value={bulkTransferReceiver} onChange={e => setBulkTransferReceiver(e.target.value)}
+              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none">
+              {receivers.map(r => <option key={r} value={r}>{r}</option>)}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Ngày thu tiền</label>
+            <div className="flex items-center gap-2">
+              {bulkTransferDate === todayStr() ? (
+                <div className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-600">Hôm nay</div>
+              ) : (
+                <div className="flex-1"><DatePickerInput value={bulkTransferDate} onChange={setBulkTransferDate} /></div>
+              )}
+              {bulkTransferDate === todayStr() && (
+                <button onClick={() => setBulkTransferDate('')} className="text-[11px] text-indigo-600 font-medium px-2 py-1 bg-indigo-50 rounded-lg hover:bg-indigo-100 whitespace-nowrap">Chọn ngày khác</button>
+              )}
+              {bulkTransferDate !== todayStr() && (
+                <button onClick={() => setBulkTransferDate(todayStr())} className="text-[11px] text-indigo-600 font-medium px-2 py-1 bg-indigo-50 rounded-lg hover:bg-indigo-100 whitespace-nowrap">Chọn hôm nay</button>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Phương thức<RequiredStar /></label>
+            <select id="select-bulk-method" value={bulkTransferMethod} onChange={e => setBulkTransferMethod(e.target.value)}
+              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none">
+              <option value="Tiền mặt">Tiền mặt</option>
+              <option value="Chuyển khoản">Chuyển khoản</option>
+            </select>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-2">
+            <button onClick={() => setBulkTransferOpen(false)} className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800">Hủy</button>
+            <button onClick={handleDoBulkTransfer} disabled={bulkActing}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2 rounded-xl text-sm font-medium transition-all shadow-md shadow-emerald-100 disabled:opacity-50 flex items-center gap-2">
+              {bulkActing && <Loader2 size={16} className="animate-spin" />}
+              Xác nhận chuyển
+            </button>
+          </div>
+        </div>
       </Modal>
 
       <ConfirmDialog open={!!deleteId} title="Xóa thanh toán" message="Bạn có chắc chắn muốn xóa khoản thanh toán này? Hành động này không thể hoàn tác."

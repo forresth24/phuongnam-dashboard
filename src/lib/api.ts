@@ -137,6 +137,12 @@ export const API = {
     const query = params.length > 0 ? '?' + params.join('&') : '';
     return fetchApi<{ base64: string; filename: string }>(config, `/api/pdf/sub-contract/${contractId}${query}`);
   },
+  getExtensionPdf: (config: AppConfig, contractId: string, extensionDuration: number, signDate?: string) => {
+    const params: string[] = [];
+    params.push(`extension_duration=${encodeURIComponent(extensionDuration)}`);
+    if (signDate) params.push(`sign_date=${encodeURIComponent(signDate)}`);
+    return fetchApi<{ base64: string; filename: string }>(config, `/api/pdf/extension/${contractId}?${params.join('&')}`);
+  },
   getReceiptPdf: (config: AppConfig, paymentId: string, dueDate?: string) => {
     let url = `/api/pdf/receipt/${paymentId}`;
     if (dueDate) url += `?due_date=${encodeURIComponent(dueDate)}`;
