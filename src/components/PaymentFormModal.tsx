@@ -8,7 +8,7 @@ import { ConfirmDialog } from './ui/ConfirmDialog';
 import { DatePickerInput } from './ui/DatePickerInput';
 import { getReceivers, autoPaymentStatus, getContractMonthRange } from '../lib/settings-helpers';
 import {
-  formatVND, todayStr, firstDayOfMonthStr, roundUp10k, roundUp1k,
+  formatVND, todayStr, firstDayOfMonthStr, roundUp1k,
   calculateExpectedAmount, validatePaymentForm, sumBreakdown,
   makeEmptyPaymentForm, getPaymentTypeLabel,
   type PaymentFormData, type PaymentFieldError,
@@ -333,11 +333,11 @@ export function PaymentFormModal({
     const newForm = {
       ...form,
       stayed_days: days,
-      base_rent: roundUp10k(exp.fullBasePrice * ratio),
-      // extra_person_fee: roundUp10k(exp.fullExtraFee * ratio),
-      extra_person_fee: roundUp10k(exp.fullExtraFee),
-      living_fee: roundUp10k(exp.fullSurcharge * ratio),
-      water_fee: roundUp10k(exp.fullLivingFee * ratio),
+      base_rent: roundUp1k(exp.fullBasePrice * ratio),
+      // extra_person_fee: roundUp1k(exp.fullExtraFee * ratio),
+      extra_person_fee: roundUp1k(exp.fullExtraFee),
+      living_fee: roundUp1k(exp.fullSurcharge * ratio),
+      water_fee: roundUp1k(exp.fullLivingFee * ratio),
       electric_fee: roundUp1k(exp.fullElectric * ratio),
     };
     setForm({ ...newForm, amount: sumBreakdown(newForm) });

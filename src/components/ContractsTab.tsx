@@ -8,7 +8,7 @@ import { Modal } from './ui/Modal';
 import { ConfirmDialog } from './ui/ConfirmDialog';
 import { DatePickerInput } from './ui/DatePickerInput';
 import { getContractMonthRange } from '../lib/settings-helpers';
-import { roundUp10k, roundUp1k } from '../lib/payment-utils';
+import { roundUp1k } from '../lib/payment-utils';
 import { getContractFullTenantName, getContractTenantPhone } from '../lib/tenant-utils';
 
 const formatVND = (n: number, showSuffix: boolean = true) => new Intl.NumberFormat('en-US').format(n) + (showSuffix ? ' VND' : '');
@@ -211,8 +211,8 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
     const peopleCount = Number(form.people_count) || 1;
     const roomType = (room ? room.type : 'Phòng đơn').toLowerCase();
     let epf = 0;
-    if (roomType === 'phòng đơn' && peopleCount > 1) epf = roundUp10k((Number(settings.EXTRA_FEE_SINGLE) || 0) * (peopleCount - 1));
-    else if (roomType === 'phòng đôi' && peopleCount > 2) epf = roundUp10k((Number(settings.EXTRA_FEE_DOUBLE) || 0) * (peopleCount - 2));
+    if (roomType === 'phòng đơn' && peopleCount > 1) epf = roundUp1k((Number(settings.EXTRA_FEE_SINGLE) || 0) * (peopleCount - 1));
+    else if (roomType === 'phòng đôi' && peopleCount > 2) epf = roundUp1k((Number(settings.EXTRA_FEE_DOUBLE) || 0) * (peopleCount - 2));
     setForm({ ...form, room_id: roomId, rent: price, deposit_paid: 0, extra_person_fee: epf });
     if (errors.room_id) setErrors({ ...errors, room_id: undefined });
   };

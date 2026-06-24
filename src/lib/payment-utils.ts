@@ -8,8 +8,6 @@ import type { DashboardData } from './api';
 export const formatVND = (amount: number, showSuffix: boolean = true) =>
   new Intl.NumberFormat('en-US').format(amount) + (showSuffix ? ' VND' : '');
 
-export const roundUp10k = (amount: number) => Math.ceil(amount / 10000) * 10000;
-export const roundUp5k = (amount: number) => Math.ceil(amount / 5000) * 5000;
 export const roundUp1k = (amount: number) => Math.ceil(amount / 1000) * 1000;
 
 export const todayStr = () => {
@@ -255,10 +253,10 @@ export function calculateExpectedAmount(
   }
 
   const res = {
-    basePrice: roundUp10k(basePrice * prorateRatio),
-    extraPersonFee: roundUp10k(extraPersonFee),
-    internetSurcharge: roundUp5k(totalInternetSurcharge * prorateRatio),
-    livingFee: roundUp5k(waterPrice * peopleCount * prorateRatio),
+    basePrice: roundUp1k(basePrice * prorateRatio),
+    extraPersonFee: roundUp1k(extraPersonFee),
+    internetSurcharge: roundUp1k(totalInternetSurcharge * prorateRatio),
+    livingFee: roundUp1k(waterPrice * peopleCount * prorateRatio),
     // If old electric is 0, it means it's a new contract or reading not yet recorded
     electricFee: oldElectric === 0 ? 0 : roundUp1k(totalElectricFee),
     deposit: deposit,
@@ -332,8 +330,8 @@ export function sumBreakdown(form: PaymentFormData): number {
   let sum = 0;
   if (fields.includes('base_rent')) sum += (Number(form.base_rent) || 0);
   if (fields.includes('extra_person_fee')) sum += (Number(form.extra_person_fee) || 0);
-  if (fields.includes('living_fee')) sum += roundUp5k(Number(form.living_fee) || 0);
-  if (fields.includes('water_fee')) sum += roundUp5k(Number(form.water_fee) || 0);
+  if (fields.includes('living_fee')) sum += roundUp1k(Number(form.living_fee) || 0);
+  if (fields.includes('water_fee')) sum += roundUp1k(Number(form.water_fee) || 0);
   if (fields.includes('electric_fee')) sum += roundUp1k(Number(form.electric_fee) || 0);
   if (fields.includes('deposit_fee')) {
     sum += (Number(form.deposit_fee) || 0);
