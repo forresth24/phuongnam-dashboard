@@ -271,7 +271,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
       setPdfDebtOverride(orig);
       pdfOriginalDebtRef.current = orig;
       const d = new Date();
-      d.setDate(d.getDate() + (Number(data?.settings?.DUE_DAYS) || 5));
+      d.setDate(d.getDate() + (Number(data?.settings?.DUE_DAYS) || 5) - 1);
       const dd = String(d.getDate()).padStart(2, '0');
       const mm = String(d.getMonth() + 1).padStart(2, '0');
       const yyyy = d.getFullYear();
