@@ -469,10 +469,20 @@ export function PaymentFormModal({
           note: finalNote.trim(),
         });
       } else {
-        await API.createPayment(config, {
+        const payment = await API.createPayment(config, {
           contract_id: contractId,
           ...commonPayload,
         });
+        // Auto-download PDF receipt — survives page reload
+        if (!isNoticeMode) {
+          try {
+            const pdfRes = await API.getReceiptPdf(config, payment.id);
+            const link = document.createElement('a');
+            link.href = `data:application/pdf;base64,${pdfRes.base64}`;
+            link.download = pdfRes.filename;
+            link.click();
+          } catch (_) { /* non-blocking */ }
+        }
       }
       onClose();
       onSuccess();
