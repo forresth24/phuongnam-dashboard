@@ -762,7 +762,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
                   <DatePickerInput value={pdfDueDate} onChange={setPdfDueDate} />
                 </div>
               </div>
-              <p className="text-[11px] text-slate-400 mt-1.5">Chọn ngày đến hạn hiển thị trên PDF. Mặc định: hôm nay + 3 ngày.</p>
+              <p className="text-[11px] text-slate-400 mt-1.5">Chọn ngày đến hạn hiển thị trên PDF. Mặc định: hôm nay + {data?.settings?.DUE_DAYS || 5} ngày.</p>
             </div>
             <div className="flex gap-3 pt-1">
               <button onClick={() => setPdfExportItem(null)}

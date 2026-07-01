@@ -1,6 +1,6 @@
 // Shared Payment Form Modal — used by both RoomsTab and PaymentsTab
-import { useState, useEffect } from 'react';
-import { Loader2, Banknote, ScrollText } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Loader2, Banknote, ScrollText, FileText } from 'lucide-react';
 import type { AppConfig, DashboardData } from '../lib/api';
 import { API } from '../lib/api';
 import { Modal } from './ui/Modal';
@@ -54,6 +54,7 @@ export function PaymentFormModal({
   const [isNextMonth, setIsNextMonth] = useState(false);
   const [selectedRoomIds, setSelectedRoomIds] = useState<string[]>(initialForm?.room_id ? [initialForm.room_id] : []);
   const [selectedContractId, setSelectedContractId] = useState<string>(initialForm?.contract_id || '');
+  const pendingPrintPdfRef = useRef(false);
 
   const receivers = getReceivers(data.settings);
   const { min: minMonths, max: maxMonths } = getContractMonthRange(data.settings);
@@ -468,20 +469,30 @@ export function PaymentFormModal({
           ...commonPayload,
           note: finalNote.trim(),
         });
+        // Generate PDF after update if requested
+        if (pendingPrintPdfRef.current) {
+          try {
+            const pdfRes = await API.getReceiptPdf(config, editItem.id);
+            const link = document.createElement('a');
+            link.href = `data:application/pdf;base64,${pdfRes.base64}`;
+            link.download = pdfRes.filename;
+            link.click();
+          } catch (_) {}
+        }
       } else {
         const payment = await API.createPayment(config, {
           contract_id: contractId,
           ...commonPayload,
         });
-        // Auto-download PDF receipt — survives page reload
-        if (!isNoticeMode) {
+        // Generate PDF after create if requested
+        if (pendingPrintPdfRef.current) {
           try {
             const pdfRes = await API.getReceiptPdf(config, payment.id);
             const link = document.createElement('a');
             link.href = `data:application/pdf;base64,${pdfRes.base64}`;
             link.download = pdfRes.filename;
             link.click();
-          } catch (_) { /* non-blocking */ }
+          } catch (_) {}
         }
       }
       onClose();
@@ -489,6 +500,7 @@ export function PaymentFormModal({
     } catch (e: any) { setSaveError(e.message || 'Lỗi không xác định'); }
     setSaving(false);
     setPendingSubmit(false);
+    pendingPrintPdfRef.current = false;
   };
 
   const handleBatchExport = async () => {
@@ -597,6 +609,20 @@ export function PaymentFormModal({
   const handlePartialConfirm = async () => {
     setPartialConfirm(false);
     setPendingSubmit(true);
+    await doSubmit();
+  };
+
+  const handleSubmitWithPdf = async () => {
+    pendingPrintPdfRef.current = true;
+    const e = validatePaymentForm(form, needsNewContract);
+    setErrors(e);
+    if (Object.keys(e).length > 0) return;
+
+    const expected = getExpected();
+    if (form.amount < expected && expected > 0) {
+      setPartialConfirm(true);
+      return;
+    }
     await doSubmit();
   };
 
@@ -1009,12 +1035,28 @@ export function PaymentFormModal({
 
           {saveError && <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-sm text-rose-700">⚠️ {saveError}</div>}
 
-          <button onClick={isNoticeMode ? handleBatchExport : handleSubmit} disabled={saving || pendingSubmit || (isNoticeMode && selectedRoomIds.length === 0)}
-            className={`w-full text-white py-2.5 rounded-xl font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2 ${isNoticeMode ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
-            {(saving || pendingSubmit) && <Loader2 size={16} className="animate-spin" />}
-            {isNoticeMode ? <ScrollText size={18} /> : <Banknote size={18} />} 
-            {isNoticeMode ? `Xuất ${selectedRoomIds.length} thông báo` : (editItem ? 'Cập nhật' : (form.receiver === 'Chưa nhận' ? 'Tạo thông báo thu tiền' : (needsNewContract ? 'Tạo HĐ + Thu tiền' : 'Thu tiền')))}
-          </button>
+          {isNoticeMode ? (
+            <button onClick={handleBatchExport} disabled={saving || pendingSubmit || selectedRoomIds.length === 0}
+              className="w-full text-white py-2.5 rounded-xl font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700">
+              {(saving || pendingSubmit) && <Loader2 size={16} className="animate-spin" />}
+              <ScrollText size={18} /> Xuất {selectedRoomIds.length} thông báo
+            </button>
+          ) : (
+            <div className="flex gap-3">
+              <button onClick={handleSubmit} disabled={saving || pendingSubmit}
+                className="flex-1 text-white py-2.5 rounded-xl font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700">
+                {(saving || pendingSubmit) && <Loader2 size={16} className="animate-spin" />}
+                <Banknote size={18} />
+                {editItem ? 'Cập nhật' : (form.receiver === 'Chưa nhận' ? 'Tạo thông báo thu tiền' : (needsNewContract ? 'Tạo HĐ + Thu tiền' : 'Thu tiền'))}
+              </button>
+              <button onClick={handleSubmitWithPdf} disabled={saving || pendingSubmit}
+                className="flex-1 text-white py-2.5 rounded-xl font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-700 shadow-sm shadow-amber-200">
+                {(saving || pendingSubmit) && <Loader2 size={16} className="animate-spin" />}
+                <FileText size={16} />
+                {editItem ? 'Cập nhật và in PDF' : 'Tạo thông báo và in PDF'}
+              </button>
+            </div>
+          )}
         </div>
       </Modal>
 
