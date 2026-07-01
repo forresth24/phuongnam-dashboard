@@ -271,7 +271,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
       setPdfDebtOverride(orig);
       pdfOriginalDebtRef.current = orig;
       const d = new Date();
-      d.setDate(d.getDate() + 3);
+      d.setDate(d.getDate() + (Number(data?.settings?.DUE_DAYS) || 5));
       const dd = String(d.getDate()).padStart(2, '0');
       const mm = String(d.getMonth() + 1).padStart(2, '0');
       const yyyy = d.getFullYear();
@@ -759,7 +759,7 @@ export function PaymentsTab({ config, data, loading, role, onRefresh }: Props) {
               <label className="block text-sm font-bold text-indigo-700 mb-1">Ngày đến hạn</label>
               <div className="flex items-center gap-2">
                 <div className="flex-1">
-                  <DatePickerInput value={pdfDueDate} onChange={setPdfDueDate} />
+                  <DatePickerInput id="input-due-date" name="due_date" value={pdfDueDate} onChange={setPdfDueDate} />
                 </div>
               </div>
               <p className="text-[11px] text-slate-400 mt-1.5">Chọn ngày đến hạn hiển thị trên PDF. Mặc định: hôm nay + {data?.settings?.DUE_DAYS || 5} ngày.</p>
