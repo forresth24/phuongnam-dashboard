@@ -237,19 +237,24 @@ export function calculateExpectedAmount(
   // Calculate prorated fees
   const prorateRatio = stayed_days >= period_days ? 1 : Math.min(1, stayed_days / 30);
   
-  // Find last payment to get electric reading
+  // Find most recent payment with a valid electric reading (sorted by date desc)
+  // Includes: all statuses (Chưa tới chủ nhà, Hoàn thành, etc.), all periods
   let oldElectric = 0;
   if (contract) {
-    const validPayments = data.payments
-      .filter((p: any) => String(p.contract_id) === String(contract.id) && (Number(p.new_electric) || 0) > 0);
-    
-    if (validPayments.length > 0) {
-      // Get the one with highest ID or last in list if already ordered
-      const last = validPayments[validPayments.length - 1];
-      oldElectric = Number(last.new_electric) || 0;
-    } else if (contract) {
-      oldElectric = Number(contract.start_electric) || 0;
-    }
+    const contractPayments = data.payments
+      .filter((p: any) => String(p.contract_id) === String(contract.id))
+      .sort((a: any, b: any) => {
+        const dateA = a.date ? new Date(a.date.split('/').reverse().join('-')) : new Date(0);
+        const dateB = b.date ? new Date(b.date.split('/').reverse().join('-')) : new Date(0);
+        return dateB.getTime() - dateA.getTime();
+      });
+
+    const lastWithReading = contractPayments.find((p: any) => {
+      const val = p.new_electric;
+      return val !== undefined && val !== null && val !== '' && !isNaN(Number(val));
+    });
+
+    oldElectric = lastWithReading ? Number(lastWithReading.new_electric) || 0 : (Number(contract.start_electric) || 0);
   }
 
   const res = {
