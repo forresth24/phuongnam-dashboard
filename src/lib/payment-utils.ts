@@ -244,11 +244,14 @@ export function calculateExpectedAmount(
     const contractPayments = data.payments
       .filter((p: any) => String(p.contract_id) === String(contract.id))
       .sort((a: any, b: any) => {
-        const dateA = a.date ? new Date(a.date.split('/').reverse().join('-')) : new Date(0);
-        const dateB = b.date ? new Date(b.date.split('/').reverse().join('-')) : new Date(0);
+        const dateStrA = a.received_date || a.date || '';
+        const dateStrB = b.received_date || b.date || '';
+        const dateA = dateStrA ? new Date(dateStrA.split('/').reverse().join('-')) : new Date(0);
+        const dateB = dateStrB ? new Date(dateStrB.split('/').reverse().join('-')) : new Date(0);
         return dateB.getTime() - dateA.getTime();
       });
 
+    // find from end (newest first after sort desc), return the first with valid new_electric
     const lastWithReading = contractPayments.find((p: any) => {
       const val = p.new_electric;
       return val !== undefined && val !== null && val !== '' && !isNaN(Number(val));
