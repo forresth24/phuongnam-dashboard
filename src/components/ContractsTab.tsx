@@ -359,7 +359,15 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
         prorated_rent: proratedRent || undefined,
       });
 
-      if (res) downloadBase64Pdf(res.base64, res.filename);
+      if (res) {
+        downloadBase64Pdf(res.base64, res.filename);
+        if (res.corrections && Object.keys(res.corrections).length > 0) {
+          const msgs: string[] = [];
+          if (res.corrections.electric_consumption !== undefined) msgs.push(`Số điện tiêu thụ: ${res.corrections.electric_consumption} kWh`);
+          if (res.corrections.electric_cost !== undefined) msgs.push(`Tiền điện: ${formatVND(res.corrections.electric_cost)}`);
+          if (msgs.length > 0) alert('⚠️ Hệ thống đã tự động điều chỉnh số liệu điện (khác với dashboard gửi lên):\n' + msgs.join('\n'));
+        }
+      }
     } catch (e: any) { alert('Lỗi tạo PDF Biên bản thanh lý: ' + e.message); }
     setPdfLoading(null);
   };

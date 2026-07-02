@@ -180,7 +180,7 @@ export const API = {
     if (options?.prorated_rent) params.set('prorated_rent', String(options.prorated_rent));
     if (options?.rent_overpayment) params.set('rent_overpayment', String(options.rent_overpayment));
     const qs = params.toString();
-    return fetchApi<{ base64: string; filename: string }>(config, `/api/pdf/termination/${contractId}${qs ? '?' + qs : ''}`);
+    return fetchApi<{ base64: string; filename: string; corrections?: Record<string, any> }>(config, `/api/pdf/termination/${contractId}${qs ? '?' + qs : ''}`);
   },
 };
 
