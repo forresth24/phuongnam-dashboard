@@ -572,15 +572,16 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
                             );
                             let defaultReading = '';
                             if (contractPayments.length > 0) {
-                              const sorted = [...contractPayments].sort((a, b) =>
-                                (b.received_date || b.date || '').localeCompare(a.received_date || a.date || '')
+                              const sorted = [...contractPayments].sort((a, b) => {
+                                const da = (a.received_date || a.date || '').split('/');
+                                const db = (b.received_date || b.date || '').split('/');
+                                return (Number(db[2]) - Number(da[2])) || (Number(db[1]) - Number(da[1])) || (Number(db[0]) - Number(da[0]));
+                              });
+                              const lastWithReading = sorted.find((p: any) =>
+                                p.new_electric !== undefined && p.new_electric !== null && p.new_electric !== '' && !isNaN(Number(p.new_electric))
                               );
-                              const latest = sorted[0];
-                              const isPaid = latest.status === 'Hoàn thành' || latest.status === 'Đã hoàn thành';
-                              if (isPaid) {
-                                defaultReading = String(latest.new_electric || latest.old_electric || '');
-                              } else {
-                                defaultReading = String(latest.old_electric || latest.new_electric || '');
+                              if (lastWithReading) {
+                                defaultReading = String(lastWithReading.new_electric);
                               }
                             }
                             setFinalElectricReading(defaultReading);
@@ -602,15 +603,16 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
                           );
                           let defaultReading = '';
                           if (contractPayments.length > 0) {
-                            const sorted = [...contractPayments].sort((a, b) =>
-                              (b.received_date || b.date || '').localeCompare(a.received_date || a.date || '')
+                            const sorted = [...contractPayments].sort((a, b) => {
+                              const da = (a.received_date || a.date || '').split('/');
+                              const db = (b.received_date || b.date || '').split('/');
+                              return (Number(db[2]) - Number(da[2])) || (Number(db[1]) - Number(da[1])) || (Number(db[0]) - Number(da[0]));
+                            });
+                            const lastWithReading = sorted.find((p: any) =>
+                              p.new_electric !== undefined && p.new_electric !== null && p.new_electric !== '' && !isNaN(Number(p.new_electric))
                             );
-                            const latest = sorted[0];
-                            const isPaid = latest.status === 'Hoàn thành' || latest.status === 'Đã hoàn thành';
-                            if (isPaid) {
-                              defaultReading = String(latest.new_electric || latest.old_electric || '');
-                            } else {
-                              defaultReading = String(latest.old_electric || latest.new_electric || '');
+                            if (lastWithReading) {
+                              defaultReading = String(lastWithReading.new_electric);
                             }
                           }
                           setArchiveId(c.id);
