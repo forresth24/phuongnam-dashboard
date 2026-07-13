@@ -10,6 +10,8 @@ import { Modal } from './ui/Modal';
 const formatVND = (n: number, showSuffix: boolean = true) =>
   new Intl.NumberFormat('en-US').format(n) + (showSuffix ? ' VND' : '');
 
+const roundUp1k = (n: number) => Math.ceil(n / 1000) * 1000;
+
 interface Props {
   config: AppConfig;
   data: DashboardData | null;
@@ -30,6 +32,7 @@ export function PayablesTab({ config, data, loading, role, onRefresh }: Props) {
   const [termFinalReading, setTermFinalReading] = useState('');
   const [termDebtTotal, setTermDebtTotal] = useState('');
   const [termCleaningFee, setTermCleaningFee] = useState('');
+  const [termStayedDays, setTermStayedDays] = useState(30);
 
   const isAdmin = role === 'admin';
 
@@ -74,6 +77,7 @@ export function PayablesTab({ config, data, loading, role, onRefresh }: Props) {
     setTermFinalReading(elecMatch ? elecMatch[1] : '');
     setTermDebtTotal('');
     setTermCleaningFee('');
+    setTermStayedDays(30);
   };
 
   const handleTerminationPdf = async () => {
@@ -84,11 +88,15 @@ export function PayablesTab({ config, data, loading, role, onRefresh }: Props) {
       const contract = (data?.contracts_all || []).find((c: any) => c.id === termPayable.contract_id);
       const originalDeposit = contract ? Number(contract.deposit_paid) || 0 : (Number(termPayable.amount) || 0);
       const startElectric = contract ? Number(contract.start_electric) || 0 : 0;
+      const peopleCount = Number(contract?.people_count) || 1;
+      const discount = Number(contract?.discount) || 0;
+      const fullRent = Number(contract?.rent) || 0;
 
       const finalReading = termFinalReading ? Number(termFinalReading) : NaN;
       const electricPrice = Number(data?.settings?.ELECTRIC_PRICE) || 3500;
       const debt = Number(termDebtTotal) || 0;
       const cleaning = Number(termCleaningFee) || 0;
+      const ds = termStayedDays;
 
       let consumption = 0;
       let electricCost = 0;
@@ -97,7 +105,12 @@ export function PayablesTab({ config, data, loading, role, onRefresh }: Props) {
         electricCost = consumption * electricPrice;
       }
 
-      const totalDeductions = electricCost + debt + cleaning;
+      const proratedRent = roundUp1k(fullRent / 30 * ds);
+      const proratedWater = roundUp1k((Number(data?.settings?.WATER_PRICE_PER_PERSON) || 0) * peopleCount / 30 * ds);
+      const monthlySurcharge = Math.max(0, (Number(data?.settings?.SURCHARGE_PER_PERSON) || 0) * peopleCount - discount);
+      const proratedService = roundUp1k(monthlySurcharge / 30 * ds);
+
+      const totalDeductions = proratedRent + electricCost + debt + cleaning + proratedWater + proratedService;
       const refundAmount = Math.max(0, originalDeposit - totalDeductions);
 
       const res = await API.getTerminationPdf(config, termPayable.contract_id, {
@@ -108,6 +121,11 @@ export function PayablesTab({ config, data, loading, role, onRefresh }: Props) {
         refund_amount: refundAmount,
         debt_total: debt || undefined,
         cleaning_fee: cleaning || undefined,
+        water_fee: proratedWater || undefined,
+        service_fee: proratedService || undefined,
+        stayed_days: ds,
+        full_rent: fullRent || undefined,
+        prorated_rent: proratedRent || undefined,
       });
       if (res) {
         downloadBase64Pdf(res.base64, res.filename);
@@ -115,7 +133,9 @@ export function PayablesTab({ config, data, loading, role, onRefresh }: Props) {
           const msgs: string[] = [];
           if (res.corrections.electric_consumption !== undefined) msgs.push(`Số điện tiêu thụ: ${res.corrections.electric_consumption} kWh`);
           if (res.corrections.electric_cost !== undefined) msgs.push(`Tiền điện: ${formatVND(res.corrections.electric_cost)}`);
-          if (msgs.length > 0) alert('⚠️ Hệ thống đã tự động điều chỉnh số liệu điện (khác với dashboard gửi lên):\n' + msgs.join('\n'));
+          if (res.corrections.water_fee !== undefined) msgs.push(`Tiền nước: ${formatVND(res.corrections.water_fee)} (có thể do khác biệt số khách/chiết khấu)`);
+          if (res.corrections.service_fee !== undefined) msgs.push(`Phí dịch vụ: ${formatVND(res.corrections.service_fee)} (có thể do khác biệt số khách/chiết khấu)`);
+          if (msgs.length > 0) alert('⚠️ Hệ thống đã tự động điều chỉnh số liệu (khác với dashboard gửi lên):\n' + msgs.join('\n'));
         }
       }
       setTermPayable(null);
@@ -289,6 +309,12 @@ export function PayablesTab({ config, data, loading, role, onRefresh }: Props) {
       <Modal open={!!termPayable} onClose={() => setTermPayable(null)} title="Biên bản thanh lý HĐ" maxWidth="max-w-sm">
         <div className="space-y-4">
           <p className="text-xs text-slate-500">Nhập thông tin quyết toán trước khi tạo PDF biên bản thanh lý.</p>
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-2">
+            <label className="block text-xs font-medium text-slate-600 mb-1">Số ngày ở thực tế tháng cuối</label>
+            <input type="number" min={0} max={31} value={termStayedDays}
+              onChange={e => setTermStayedDays(e.target.value === "" ? 30 : Math.max(0, Math.min(31, Number(e.target.value))))}
+              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
+          </div>
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Chỉ số điện cuối</label>
             <input type="number" value={termFinalReading} onChange={e => setTermFinalReading(e.target.value)}
@@ -309,6 +335,27 @@ export function PayablesTab({ config, data, loading, role, onRefresh }: Props) {
                 className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
             </div>
           </div>
+          {(() => {
+            const contract = (data?.contracts_all || []).find((c: any) => c.id === termPayable?.contract_id);
+            if (!contract) return null;
+            const depositPaid = Number(contract.deposit_paid) || 0;
+            const fullRent = Number(contract.rent) || 0;
+            const ds = termStayedDays;
+            const proratedRent = roundUp1k(fullRent / 30 * ds);
+            const peopleCount = Number(contract.people_count) || 1;
+            const discount = Number(contract.discount) || 0;
+            const proratedWater = roundUp1k((Number(data?.settings?.WATER_PRICE_PER_PERSON) || 0) * peopleCount / 30 * ds);
+            const monthlySurcharge = Math.max(0, (Number(data?.settings?.SURCHARGE_PER_PERSON) || 0) * peopleCount - discount);
+            const proratedService = roundUp1k(monthlySurcharge / 30 * ds);
+            return (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs space-y-1">
+                <p className="flex justify-between text-slate-700 font-medium">Số tiền đã cọc:<span>{formatVND(depositPaid)}</span></p>
+                {proratedRent > 0 && <p className="flex justify-between text-slate-600">Tiền phòng {ds} ngày:<span className="text-rose-600">-{formatVND(proratedRent)}</span></p>}
+                {proratedWater > 0 && <p className="flex justify-between text-slate-600">Tiền nước {ds} ngày:<span className="text-rose-600">-{formatVND(proratedWater)}</span></p>}
+                {proratedService > 0 && <p className="flex justify-between text-slate-600">Phí dịch vụ {ds} ngày (chiết khấu -{formatVND(discount)}/tháng):<span className="text-rose-600">-{formatVND(proratedService)}</span></p>}
+              </div>
+            );
+          })()}
           <div className="flex gap-3 pt-2">
             <button onClick={() => setTermPayable(null)} className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-medium hover:bg-slate-50 transition-colors">Hủy</button>
             <button onClick={handleTerminationPdf} disabled={pdfLoading === `termination_${termPayable?.id}`} className="flex-1 px-4 py-2.5 rounded-xl bg-violet-600 text-white font-medium hover:bg-violet-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2">

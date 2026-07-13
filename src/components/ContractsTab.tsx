@@ -269,10 +269,12 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
           const cleaning = Number(cleaningFee) || 0;
           const fullRent = Number(contract.rent) || 0;
           const ds = stayedDays;
+          const discount = Number(contract.discount) || 0;
           const peopleCount = Number(contract.people_count) || 1;
           const proratedRent = roundUp1k(fullRent / 30 * ds);
           const proratedWater = roundUp1k((Number(data?.settings?.WATER_PRICE_PER_PERSON) || 0) * peopleCount / 30 * ds);
-          const proratedService = roundUp1k((Number(data?.settings?.SURCHARGE_PER_PERSON) || 0) * peopleCount / 30 * ds);
+          const monthlySurcharge = Math.max(0, (Number(data?.settings?.SURCHARGE_PER_PERSON) || 0) * peopleCount - discount);
+          const proratedService = roundUp1k(monthlySurcharge / 30 * ds);
 
           let note = `Trả cọc - Phòng ${contract.room_id} - ${getContractFullTenantName(contract, data.tenants)}`;
           let electricCost = 0;
@@ -327,6 +329,7 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
       const cleaning = Number(cleaningFee) || 0;
       const fullRent = Number(contract.rent) || 0;
       const daysStayed = stayedDays;
+      const discount = Number(contract.discount) || 0;
       const peopleCount = Number(contract.people_count) || 1;
 
       let refundAmount = deposit;
@@ -334,7 +337,8 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
       let electricCost = 0;
       const proratedRent = roundUp1k(fullRent / 30 * daysStayed);
       const proratedWater = roundUp1k((Number(data?.settings?.WATER_PRICE_PER_PERSON) || 0) * peopleCount / 30 * daysStayed);
-      const proratedService = roundUp1k((Number(data?.settings?.SURCHARGE_PER_PERSON) || 0) * peopleCount / 30 * daysStayed);
+      const monthlySurcharge = Math.max(0, (Number(data?.settings?.SURCHARGE_PER_PERSON) || 0) * peopleCount - discount);
+      const proratedService = roundUp1k(monthlySurcharge / 30 * daysStayed);
       let totalDeductions = debt + cleaning + proratedRent + proratedWater + proratedService;
 
       if (!isNaN(moveOutReading) && !isNaN(baselineReading) && moveOutReading > baselineReading) {
@@ -365,7 +369,9 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
           const msgs: string[] = [];
           if (res.corrections.electric_consumption !== undefined) msgs.push(`Số điện tiêu thụ: ${res.corrections.electric_consumption} kWh`);
           if (res.corrections.electric_cost !== undefined) msgs.push(`Tiền điện: ${formatVND(res.corrections.electric_cost)}`);
-          if (msgs.length > 0) alert('⚠️ Hệ thống đã tự động điều chỉnh số liệu điện (khác với dashboard gửi lên):\n' + msgs.join('\n'));
+          if (res.corrections.water_fee !== undefined) msgs.push(`Tiền nước: ${formatVND(res.corrections.water_fee)} (có thể do khác biệt số khách/chiết khấu)`);
+          if (res.corrections.service_fee !== undefined) msgs.push(`Phí dịch vụ: ${formatVND(res.corrections.service_fee)} (có thể do khác biệt số khách/chiết khấu)`);
+          if (msgs.length > 0) alert('⚠️ Hệ thống đã tự động điều chỉnh số liệu (khác với dashboard gửi lên):\n' + msgs.join('\n'));
         }
       }
     } catch (e: any) { alert('Lỗi tạo PDF Biên bản thanh lý: ' + e.message); }
@@ -899,9 +905,11 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
                 const proratedRent = roundUp1k(fullRent / 30 * ds);
                 const debtAmt = Number(debtTotal) || 0;
                 const cleaningAmt = Number(cleaningFee) || 0;
+                const discount = Number(contract?.discount) || 0;
                 const peopleCount = Number(contract?.people_count) || 1;
+                const monthlySurcharge = Math.max(0, (Number(data?.settings?.SURCHARGE_PER_PERSON) || 0) * peopleCount - discount);
                 const proratedWater = roundUp1k((Number(data?.settings?.WATER_PRICE_PER_PERSON) || 0) * peopleCount / 30 * ds);
-                const proratedService = roundUp1k((Number(data?.settings?.SURCHARGE_PER_PERSON) || 0) * peopleCount / 30 * ds);
+                const proratedService = roundUp1k(monthlySurcharge / 30 * ds);
                 const refundAmount = Math.max(0, depositPaid - proratedRent - proratedWater - proratedService - calculatedElectricCost - debtAmt - cleaningAmt);
                 return (
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs space-y-1">
@@ -910,7 +918,7 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
                       <p className="flex justify-between text-slate-600">Tiền phòng {ds} ngày:<span className="text-rose-600">-{formatVND(proratedRent)}</span></p>
                     )}
                     {proratedWater > 0 && <p className="flex justify-between text-slate-600">Tiền nước {ds} ngày:<span className="text-rose-600">-{formatVND(proratedWater)}</span></p>}
-                    {proratedService > 0 && <p className="flex justify-between text-slate-600">Phí dịch vụ {ds} ngày:<span className="text-rose-600">-{formatVND(proratedService)}</span></p>}
+                    {proratedService > 0 && <p className="flex justify-between text-slate-600">Phí dịch vụ {ds} ngày (chiết khấu -{formatVND(discount)}/tháng):<span className="text-rose-600">-{formatVND(proratedService)}</span></p>}
                     {calculatedElectricCost > 0 && (
                       <>
                         <p className="text-slate-700">Điện tiêu thụ: {calculatedConsumption} kWh</p>
@@ -1010,16 +1018,18 @@ export function ContractsTab({ config, data, loading, role, onRefresh }: Props) 
             const proratedRent = roundUp1k(fullRent / 30 * ds);
             const debtAmt = Number(debtTotal) || 0;
             const cleaningAmt = Number(cleaningFee) || 0;
+            const discount = Number(contract?.discount) || 0;
             const peopleCount = Number(contract?.people_count) || 1;
+            const monthlySurcharge = Math.max(0, (Number(data?.settings?.SURCHARGE_PER_PERSON) || 0) * peopleCount - discount);
             const proratedWater = roundUp1k((Number(data?.settings?.WATER_PRICE_PER_PERSON) || 0) * peopleCount / 30 * ds);
-            const proratedService = roundUp1k((Number(data?.settings?.SURCHARGE_PER_PERSON) || 0) * peopleCount / 30 * ds);
+            const proratedService = roundUp1k(monthlySurcharge / 30 * ds);
             const refundAmount = Math.max(0, depositPaid - proratedRent - proratedWater - proratedService - calculatedElectricCost - debtAmt - cleaningAmt);
             return (
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs space-y-1">
                 <p className="flex justify-between text-slate-700 font-medium">Số tiền đã cọc:<span>{formatVND(depositPaid)}</span></p>
                 {proratedRent > 0 && <p className="flex justify-between text-slate-600">Tiền phòng {ds} ngày:<span className="text-rose-600">-{formatVND(proratedRent)}</span></p>}
                 {proratedWater > 0 && <p className="flex justify-between text-slate-600">Tiền nước {ds} ngày:<span className="text-rose-600">-{formatVND(proratedWater)}</span></p>}
-                {proratedService > 0 && <p className="flex justify-between text-slate-600">Phí dịch vụ {ds} ngày:<span className="text-rose-600">-{formatVND(proratedService)}</span></p>}
+                {proratedService > 0 && <p className="flex justify-between text-slate-600">Phí dịch vụ {ds} ngày (chiết khấu -{formatVND(discount)}/tháng):<span className="text-rose-600">-{formatVND(proratedService)}</span></p>}
                 {calculatedElectricCost > 0 && (
                   <>
                     <p className="text-slate-700">Điện tiêu thụ: {calculatedConsumption} kWh</p>
