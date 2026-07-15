@@ -58,7 +58,7 @@ export function PayablesTab({ config, data, loading, role, onRefresh }: Props) {
     try {
       const newStatus = (payable.status === 'paid' || payable.status === 'true') ? 'pending' : 'paid';
       await API.updatePayable(config, payable.id, { status: newStatus });
-      onRefresh();
+      await onRefresh();
     } catch (e: any) {
       alert('Lỗi: ' + e.message);
     }
@@ -161,7 +161,7 @@ export function PayablesTab({ config, data, loading, role, onRefresh }: Props) {
       });
       setShowEditModal(false);
       setEditingItem(null);
-      onRefresh();
+      await onRefresh();
     } catch (e: any) {
       alert('Lỗi: ' + e.message);
     }
@@ -175,7 +175,7 @@ export function PayablesTab({ config, data, loading, role, onRefresh }: Props) {
       // Use archive pattern for delete
       await API.updatePayable(config, deleteId, { status: 'cancelled', updated_at: new Date().toISOString() });
       setDeleteId(null);
-      onRefresh();
+      await onRefresh();
     } catch (e: any) {
       alert('Lỗi: ' + e.message);
     }
@@ -251,7 +251,7 @@ export function PayablesTab({ config, data, loading, role, onRefresh }: Props) {
                             title={isPaid ? 'Đánh dấu chưa trả' : 'Đánh dấu đã trả'}
                             className={`p-1.5 rounded-lg transition-colors disabled:opacity-50 ${isPaid ? 'hover:bg-amber-50 text-amber-500 hover:text-amber-700' : 'hover:bg-emerald-50 text-emerald-500 hover:text-emerald-700'}`}
                           >
-                            {isPaid ? <XCircle size={14} /> : <CheckCircle size={14} />}
+                            {acting ? <Loader2 size={14} className="animate-spin" /> : isPaid ? <XCircle size={14} /> : <CheckCircle size={14} />}
                           </button>
                           {p.contract_id && (
                             <button

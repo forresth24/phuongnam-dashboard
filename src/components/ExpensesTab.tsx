@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Pencil, Trash2, Check, X, RotateCcw, HandCoins, Wallet } from 'lucide-react';
+import { Plus, Pencil, Trash2, Check, X, RotateCcw, HandCoins, Wallet, Loader2 } from 'lucide-react';
 import { API, type AppConfig, type DashboardData, type UserRole } from '../lib/api';
 import { formatVND } from '../lib/payment-utils';
 
@@ -170,8 +170,8 @@ export function ExpensesTab({ config, data, loading, role, onRefresh }: Props) {
 
   if (loading && !data) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+      <div className="flex h-64 items-center justify-center">
+        <Loader2 className="animate-spin text-indigo-500" size={32} />
       </div>
     );
   }

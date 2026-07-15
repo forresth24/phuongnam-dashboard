@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { FileDown, Printer, Search } from 'lucide-react';
+import { FileDown, Loader2, Printer, Search } from 'lucide-react';
 import type { AppConfig, DashboardData } from '../lib/api';
 import { formatVND as originalFormatVND } from '../lib/payment-utils';
 import { buildContractTenantNameMap } from '../lib/tenant-utils';
@@ -319,8 +319,8 @@ export function ReportsTab({ data, loading }: Props) {
   // ── Loading state ──
   if (loading && !data) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" />
+      <div className="flex h-64 items-center justify-center">
+        <Loader2 className="animate-spin text-indigo-500" size={32} />
       </div>
     );
   }
