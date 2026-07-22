@@ -767,8 +767,8 @@ export function PaymentFormModal({
                     </div>
                     <div className="col-span-2">
                       <label className="block text-xs font-medium text-slate-600 mb-1">Địa chỉ thường trú</label>
-                      <input id="input-tenant-address" name="address" value={form.address} onChange={e => F('address', e.target.value)} placeholder="Số 123, Đường ABC, Quận 1, TP.HCM"
-                        className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
+                      <textarea id="input-tenant-address" name="address" value={form.address} onChange={e => F('address', e.target.value)} placeholder="Số 123, Đường ABC, Quận 1, TP.HCM" rows={2}
+                        className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none resize-none" />
                     </div>
                   </>
                 )}

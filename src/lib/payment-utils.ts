@@ -254,7 +254,7 @@ export function calculateExpectedAmount(
     // find from end (newest first after sort desc), return the first with valid new_electric
     const lastWithReading = contractPayments.find((p: any) => {
       const val = p.new_electric;
-      return val !== undefined && val !== null && val !== '' && !isNaN(Number(val));
+      return val !== undefined && val !== null && val !== '' && !isNaN(Number(val)) && Number(val) > 0;
     });
 
     oldElectric = lastWithReading ? Number(lastWithReading.new_electric) || 0 : (Number(contract.start_electric) || 0);

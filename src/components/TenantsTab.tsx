@@ -218,7 +218,7 @@ export function TenantsTab({ config, data, loading, role, onRefresh }: Props) {
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Địa chỉ</label>
-            <input id="input-tenant-address" name="address" value={form.address} onChange={e => F('address', e.target.value)} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
+            <textarea id="input-tenant-address" name="address" value={form.address} onChange={e => F('address', e.target.value)} rows={2} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none resize-none" />
           </div>
           <div className="col-span-2">
             <button onClick={handleSave} disabled={saving || !form.room_id || !form.name} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-xl font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
