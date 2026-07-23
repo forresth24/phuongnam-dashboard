@@ -189,6 +189,8 @@ export function calculateExpectedAmount(
 
   // Tiền cọc = Giá phòng + Phụ thu quá người
   const deposit = basePrice + extraPersonFee;
+  // Đơn giá phòng đầy đủ hàng tháng (bao gồm phụ thu quá người)
+  const fullRoomMonthly = basePrice + extraPersonFee;
 
   let stayed_days = 0;
   let period_days = 30;
@@ -234,7 +236,7 @@ export function calculateExpectedAmount(
     stayed_days = period_days;
   }
 
-  // Calculate prorated fees
+  // Calculate prorated fees (fixed 30-day divisor for room fee)
   const prorateRatio = stayed_days >= period_days ? 1 : Math.min(1, stayed_days / 30);
   
   // Find most recent payment with a valid electric reading (sorted by date desc)
@@ -260,15 +262,18 @@ export function calculateExpectedAmount(
     oldElectric = lastWithReading ? Number(lastWithReading.new_electric) || 0 : (Number(contract.start_electric) || 0);
   }
 
+  // Dùng fullRoomMonthly (gồm basePrice + extraPersonFee) để chia tỉ lệ theo số ngày ở
+  const proratedTotalRoomFee = roundUp1k(fullRoomMonthly * prorateRatio);
+
   const res = {
-    basePrice: roundUp1k(basePrice * prorateRatio),
-    extraPersonFee: roundUp1k(extraPersonFee),
+    basePrice: proratedTotalRoomFee,
+    extraPersonFee: 0, // Đã gộp vào basePrice khi chia tỉ lệ số ngày ở
     internetSurcharge: roundUp1k(totalInternetSurcharge * prorateRatio),
     livingFee: roundUp1k(waterPrice * peopleCount * prorateRatio),
     // If old electric is 0, it means it's a new contract or reading not yet recorded
     electricFee: oldElectric === 0 ? 0 : roundUp1k(totalElectricFee),
     deposit: deposit,
-    fullBasePrice: basePrice,
+    fullBasePrice: fullRoomMonthly,
     fullExtraFee: extraPersonFee,
     fullSurcharge: totalInternetSurcharge,
     fullLivingFee: waterPrice * peopleCount,
